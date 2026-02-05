@@ -11,6 +11,8 @@
   // -------------------- World / HiDPI --------------------
   const STORAGE_KEY_HS = "silver_peisohovich_highscore";
 
+  const TELEGRAPH_TIME = 0.30; // сек: подсветка перед активацией опасности
+
   const world = {
     w: 0,
     h: 0,
@@ -94,6 +96,15 @@
     }
   }
 
+  // -------------------- Vibration --------------------
+  function vibrate(ms) {
+    try {
+      if (navigator && typeof navigator.vibrate === "function") {
+        navigator.vibrate(ms);
+      }
+    } catch (_) {}
+  }
+
   // -------------------- Player --------------------
   const player = {
     x: 0,
@@ -105,13 +116,26 @@
     maxSpeed: 1400,
     invuln: 0,
 
-    // статус-эффекты
-    slowTimer: 0,     // сек
-    slowFactor: 0.55, // скорость * factor
+    slowTimer: 0,
+    slowFactor: 0.55,
   };
 
+  function getPlayerHitbox() {
+    // Чуть "честнее": не весь прямоугольник, а внутренняя область
+    const padX = player.w * 0.18;
+    const padY = player.h * 0.12;
+    return {
+      x: player.x + padX,
+      y: player.y + padY,
+      w: player.w - padX * 2,
+      h: player.h - padY * 1.2
+    };
+  }
+
   // -------------------- Entities --------------------
-  const entities = []; // {type,x,y,w,h,vy,value,damage,kind,drawFn}
+  const entities = [];
+  // {type,x,y,w,h,vy,value,kind,drawFn, telegraph, age}
+
   const TYPES = {
     BUCKET: "bucket",
     MONEY: "money",
@@ -195,40 +219,33 @@
     restartBtn.classList.remove("hidden");
   }
 
-  // -------------------- Effects (пункт 3) --------------------
+  // -------------------- Effects (hazards) --------------------
   function applyHazardEffect(kind) {
-    // при ударе сбрасываем комбо (всегда)
     world.combo = 0;
 
     if (kind === "bolt") {
-      // замедление
       player.slowTimer = Math.max(player.slowTimer, 2.5);
-      // урон как обычный (1)
-      damagePlayer(1);
+      damagePlayer(1, 40); // вибро мягкая
       return;
     }
 
     if (kind === "bomb") {
-      // штраф по очкам
       world.score = Math.max(0, world.score - 30);
-      // урон обычный (1)
-      damagePlayer(1);
+      damagePlayer(1, 70); // вибро средняя
       saveHighScoreIfNeeded();
       syncHud();
       return;
     }
 
     if (kind === "saw") {
-      // двойной урон
-      damagePlayer(2);
+      damagePlayer(2, 120); // вибро сильная
       return;
     }
 
-    // spikes и прочее
-    damagePlayer(1);
+    damagePlayer(1, 60);
   }
 
-  function damagePlayer(amount) {
+  function damagePlayer(amount, vibMs) {
     if (player.invuln > 0) {
       syncHud();
       return;
@@ -236,6 +253,7 @@
 
     world.lives -= amount;
     player.invuln = 0.9;
+    vibrate(vibMs);
 
     syncHud();
 
@@ -263,28 +281,78 @@
 
     const x = Math.random() * (world.w - size);
     const y = -size - 10;
+
     const vy = world.speed * (0.9 + Math.random() * 0.55);
 
     let value = 0, kind = null, drawFn = null;
+    let telegraph = false;
 
     if (type === TYPES.BUCKET) {
       value = 20;
       kind = "kfc_bucket";
-      drawFn = (ctx, e, t) => drawBucket(ctx, e, t);
+      drawFn = (ctx2, e, t) => drawBucket(ctx2, e, t);
     }
 
     if (type === TYPES.MONEY) {
       value = 10;
       kind = "dollar_bill";
-      drawFn = (ctx, e, t) => drawMoney(ctx, e, t);
+      drawFn = (ctx2, e, t) => drawMoney(ctx2, e, t);
     }
 
     if (type === TYPES.HAZARD) {
       kind = pickHazardKind();
-      drawFn = (ctx, e, t) => drawHazard(ctx, e, t);
+      drawFn = (ctx2, e, t) => drawHazard(ctx2, e, t);
+      // телеграф только для молнии/бомбы
+      telegraph = (kind === "bolt" || kind === "bomb");
     }
 
-    entities.push({ type, x, y, w: size, h: size, vy, value, kind, drawFn });
+    entities.push({
+      type, x, y, w: size, h: size,
+      vy,
+      value,
+      kind,
+      drawFn,
+      telegraph,
+      age: 0 // сек с момента спавна
+    });
+  }
+
+  // -------------------- Custom hitboxes --------------------
+  function collidesPlayerWithEntity(e) {
+    const p = getPlayerHitbox();
+
+    // по умолчанию: AABB
+    if (e.type !== TYPES.HAZARD) {
+      return aabb(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h);
+    }
+
+    // опасности: разные хитбоксы
+    if (e.kind === "saw") {
+      // круглый хитбокс
+      const cx = e.x + e.w / 2;
+      const cy = e.y + e.h / 2;
+      const r = Math.min(e.w, e.h) * 0.34;
+
+      // ближайшая точка прямоугольника игрока к центру круга
+      const closestX = clamp(cx, p.x, p.x + p.w);
+      const closestY = clamp(cy, p.y, p.y + p.h);
+
+      const dx = cx - closestX;
+      const dy = cy - closestY;
+      return (dx * dx + dy * dy) <= (r * r);
+    }
+
+    if (e.kind === "bolt") {
+      // узкий хитбокс по центру молнии (примерно 35% ширины)
+      const bx = e.x + e.w * 0.33;
+      const bw = e.w * 0.34;
+      const by = e.y + e.h * 0.05;
+      const bh = e.h * 0.90;
+      return aabb(p.x, p.y, p.w, p.h, bx, by, bw, bh);
+    }
+
+    // spikes/bomb: обычный прямоугольник (но по игроку уже сжатый)
+    return aabb(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h);
   }
 
   // -------------------- Update --------------------
@@ -298,11 +366,11 @@
       world.spawnBase = Math.max(0.35, world.spawnBase - 0.012);
     }
 
-    // статус замедления
+    // замедление
     player.slowTimer = Math.max(0, player.slowTimer - dt);
     const slowMul = player.slowTimer > 0 ? player.slowFactor : 1.0;
 
-    // движение игрока
+    // движение
     const baseSpeed = Math.max(430, world.w * 1.25);
     const keySpeed = baseSpeed * slowMul;
 
@@ -327,9 +395,16 @@
     // entities
     for (let i = entities.length - 1; i >= 0; i--) {
       const e = entities[i];
+      e.age += dt;
+
+      // телеграф: первые 0.3 сек молния/бомба НЕ ДАМAЖАТ (просто подсветка)
+      const isTelegraphing = e.telegraph && e.age < TELEGRAPH_TIME;
+
+      // движение
       e.y += e.vy * dt;
 
-      if (aabb(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)) {
+      // столкновение (если не телеграф)
+      if (!isTelegraphing && collidesPlayerWithEntity(e)) {
         if (e.type === TYPES.HAZARD) {
           applyHazardEffect(e.kind);
         } else {
@@ -342,6 +417,7 @@
         continue;
       }
 
+      // ушло вниз
       if (e.y > world.h + 140) {
         if (e.type !== TYPES.HAZARD) {
           world.combo = 0;
@@ -354,19 +430,15 @@
 
   // -------------------- Background: спортзал --------------------
   function drawGymBackground() {
-    // базовый градиент зала
     ctx.fillStyle = "#0b0f14";
     ctx.fillRect(0, 0, world.w, world.h);
 
-    // верхняя стена
     const wallH = world.h * 0.46;
     const floorY = wallH;
 
-    // стена
     ctx.fillStyle = "#1a2330";
     ctx.fillRect(0, 0, world.w, wallH);
 
-    // окна
     const winCount = Math.max(3, Math.floor(world.w / 140));
     const winW = world.w / winCount * 0.70;
     const winH = wallH * 0.30;
@@ -386,7 +458,6 @@
       roundRectAbs(wx + 6, winY + 6, winW - 12, winH - 12, 12);
       ctx.fill();
 
-      // переплёты
       ctx.globalAlpha = 0.30;
       ctx.strokeStyle = "#0b0f14";
       ctx.lineWidth = 2;
@@ -398,7 +469,6 @@
       ctx.globalAlpha = 1;
     }
 
-    // баскетбольное кольцо (стилизованно) справа
     const hoopX = world.w * 0.82;
     const hoopY = wallH * 0.58;
     ctx.globalAlpha = 0.95;
@@ -417,11 +487,9 @@
     ctx.arc(hoopX, hoopY + 20, 22, 0, Math.PI * 2);
     ctx.stroke();
 
-    // пол
     ctx.fillStyle = "#1a1410";
     ctx.fillRect(0, floorY, world.w, world.h - floorY);
 
-    // “паркетные” полосы (скролл вниз)
     const plankH = Math.max(22, Math.floor(world.h * 0.045));
     const scroll = (world.t * 140) % plankH;
     for (let y = floorY - plankH; y < world.h + plankH; y += plankH) {
@@ -432,15 +500,12 @@
     }
     ctx.globalAlpha = 1;
 
-    // разметка площадки
     ctx.strokeStyle = "rgba(230, 230, 230, 0.35)";
     ctx.lineWidth = 3;
     ctx.beginPath();
-    // центральная линия
     ctx.moveTo(0, floorY + (world.h - floorY) * 0.25);
     ctx.lineTo(world.w, floorY + (world.h - floorY) * 0.25);
 
-    // круг
     const cx = world.w * 0.5;
     const cy = floorY + (world.h - floorY) * 0.55;
     const r = Math.min(world.w, world.h) * 0.14;
@@ -460,7 +525,7 @@
     ctx.closePath();
   }
 
-  // -------------------- Player Render: круглое лицо + белая футболка "РМ" --------------------
+  // -------------------- Player Render --------------------
   function drawPlayer() {
     const x = player.x;
     const y = player.y;
@@ -473,54 +538,46 @@
     ctx.save();
     ctx.globalAlpha = flashing ? 0.50 : 1;
 
-    // тело (футболка)
     const bodyX = x + w * 0.18;
     const bodyY = y + h * 0.35;
     const bodyW = w * 0.64;
     const bodyH = h * 0.56;
 
-    // тень
     ctx.globalAlpha *= 0.95;
     ctx.fillStyle = "rgba(0,0,0,0.25)";
     roundRectAbs(bodyX + 3, bodyY + 6, bodyW, bodyH, 18);
     ctx.fill();
 
-    // белая футболка
     ctx.globalAlpha = flashing ? 0.55 : 1;
     ctx.fillStyle = "#f6f7fb";
     roundRectAbs(bodyX, bodyY, bodyW, bodyH, 18);
     ctx.fill();
 
-    // ворот
     ctx.fillStyle = "#d9dbe6";
     roundRectAbs(bodyX + bodyW * 0.30, bodyY + bodyH * 0.05, bodyW * 0.40, bodyH * 0.12, 12);
     ctx.fill();
 
-    // надпись "РМ"
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const shirtFont = Math.max(16, Math.floor(w * 0.26));
     ctx.font = `900 ${shirtFont}px system-ui`;
-    // обводка, чтобы читаемо было всегда
     ctx.lineWidth = Math.max(3, Math.floor(w * 0.06));
     ctx.strokeStyle = "rgba(0,0,0,0.25)";
     ctx.strokeText("РМ", x + w * 0.5, bodyY + bodyH * 0.52);
     ctx.fillStyle = "#111823";
     ctx.fillText("РМ", x + w * 0.5, bodyY + bodyH * 0.52);
 
-    // лицо (круг с фото)
+    // лицо круг
     const faceR = Math.floor(w * 0.28);
     const fx = x + w * 0.5;
     const fy = y + h * 0.22;
 
-    // рамка лица
     ctx.globalAlpha = flashing ? 0.55 : 1;
     ctx.fillStyle = "#0b0f14";
     ctx.beginPath();
     ctx.arc(fx, fy, faceR + 4, 0, Math.PI * 2);
     ctx.fill();
 
-    // фото в круге
     ctx.save();
     ctx.beginPath();
     ctx.arc(fx, fy, faceR, 0, Math.PI * 2);
@@ -528,7 +585,6 @@
     ctx.drawImage(IMG.face, fx - faceR, fy - faceR, faceR * 2, faceR * 2);
     ctx.restore();
 
-    // если замедлен — лёгкий голубой “аурный” ободок
     if (slowed && !flashing) {
       const pulse = 0.35 + 0.25 * Math.sin(world.t * 12);
       ctx.globalAlpha = pulse;
@@ -539,7 +595,6 @@
       ctx.stroke();
     }
 
-    // ноги (анимация)
     ctx.globalAlpha = flashing ? 0.55 : 1;
     ctx.fillStyle = "#111823";
     const legW = Math.floor(w * 0.16);
@@ -551,6 +606,7 @@
     ctx.restore();
   }
 
+  // -------------------- Entities Render --------------------
   function drawEntities() {
     for (const e of entities) {
       if (e.drawFn) e.drawFn(ctx, e, world.t);
@@ -577,7 +633,7 @@
     ctx.restore();
   }
 
-  // -------------------- Procedural Art (четкие bucket/money + hazards) --------------------
+  // -------------------- Procedural Art --------------------
   function roundRectLocal(ctx2, x, y, w, h, r) {
     const rr = Math.min(r, w / 2, h / 2);
     ctx2.beginPath();
@@ -589,7 +645,7 @@
     ctx2.closePath();
   }
 
-  // Ведро с крылышками + "KFC" (текст жирный+обводка для читаемости)
+  // --- KFC bucket ---
   function drawBucket(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const wobble = Math.sin(t * 6 + x * 0.02) * (w * 0.02);
@@ -599,28 +655,23 @@
     ctx2.rotate(wobble * 0.02);
     ctx2.translate(-w / 2, -h / 2);
 
-    // тень
     ctx2.globalAlpha = 0.22;
     ctx2.fillStyle = "#000";
     roundRectLocal(ctx2, w * 0.12, h * 0.12, w * 0.76, h * 0.80, Math.max(10, w * 0.18));
     ctx2.fill();
     ctx2.globalAlpha = 1;
 
-    // крылышки сверху (чуть больше и контрастнее)
     drawWingsPile(ctx2, w, h);
 
-    // ведро
     const bucketX = w * 0.14, bucketY = h * 0.22, bucketW = w * 0.72, bucketH = h * 0.70;
 
     roundRectLocal(ctx2, bucketX, bucketY, bucketW, bucketH, Math.max(12, w * 0.18));
     ctx2.save();
     ctx2.clip();
 
-    // белая база
     ctx2.fillStyle = "#fbfbff";
     ctx2.fillRect(bucketX, bucketY, bucketW, bucketH);
 
-    // красные полосы (контрастнее)
     const stripes = 4;
     for (let i = 0; i < stripes; i++) {
       ctx2.fillStyle = i % 2 === 0 ? "#cf1f22" : "#fbfbff";
@@ -628,19 +679,16 @@
       ctx2.fillRect(sx, bucketY, bucketW / stripes, bucketH);
     }
 
-    // верхняя кромка
     ctx2.fillStyle = "#e8e9f2";
     ctx2.fillRect(bucketX, bucketY, bucketW, bucketH * 0.14);
 
     ctx2.restore();
 
-    // обводка ведра
     ctx2.strokeStyle = "rgba(0,0,0,0.45)";
     ctx2.lineWidth = Math.max(2, w * 0.045);
     roundRectLocal(ctx2, bucketX, bucketY, bucketW, bucketH, Math.max(12, w * 0.18));
     ctx2.stroke();
 
-    // надпись "KFC" — крупно, жирно, с обводкой
     const fontSize = Math.max(14, Math.floor(w * 0.28));
     ctx2.font = `900 ${fontSize}px system-ui`;
     ctx2.textAlign = "center";
@@ -673,13 +721,11 @@
       ctx2.translate(px, py);
       ctx2.rotate((i - 2.5) * 0.08);
 
-      // основа
       ctx2.fillStyle = "#c7772b";
       ctx2.beginPath();
       ctx2.ellipse(0, 0, rw * 0.55, rh * 0.55, 0, 0, Math.PI * 2);
       ctx2.fill();
 
-      // “корочка”
       ctx2.globalAlpha = 0.45;
       ctx2.fillStyle = "#7f3f10";
       ctx2.beginPath();
@@ -687,7 +733,6 @@
       ctx2.fill();
       ctx2.globalAlpha = 1;
 
-      // блик
       ctx2.globalAlpha = 0.16;
       ctx2.fillStyle = "#fff";
       ctx2.beginPath();
@@ -699,7 +744,7 @@
     }
   }
 
-  // Купюра с большим "$" (четко: жирный + stroke)
+  // --- Money ---
   function drawMoney(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const tilt = Math.sin(t * 7 + x * 0.03) * 0.06;
@@ -709,7 +754,6 @@
     ctx2.rotate(tilt);
     ctx2.translate(-w / 2, -h / 2);
 
-    // тень
     ctx2.globalAlpha = 0.22;
     ctx2.fillStyle = "#000";
     roundRectLocal(ctx2, w * 0.07, h * 0.22, w * 0.86, h * 0.58, Math.max(10, w * 0.12));
@@ -718,18 +762,15 @@
 
     const bx = w * 0.06, by = h * 0.23, bw = w * 0.88, bh = h * 0.56;
 
-    // купюра
     ctx2.fillStyle = "#2fbe69";
     roundRectLocal(ctx2, bx, by, bw, bh, Math.max(10, w * 0.12));
     ctx2.fill();
 
-    // рамка (контраст)
     ctx2.strokeStyle = "rgba(0,0,0,0.50)";
     ctx2.lineWidth = Math.max(2, w * 0.04);
     roundRectLocal(ctx2, bx, by, bw, bh, Math.max(10, w * 0.12));
     ctx2.stroke();
 
-    // внутренний “орнамент” — линии
     ctx2.globalAlpha = 0.35;
     ctx2.strokeStyle = "#0a5a2f";
     ctx2.lineWidth = Math.max(1, w * 0.016);
@@ -742,7 +783,6 @@
     ctx2.stroke();
     ctx2.globalAlpha = 1;
 
-    // большой "$" — максимально читаемо
     const fontSize = Math.max(16, Math.floor(w * 0.40));
     ctx2.font = `900 ${fontSize}px system-ui`;
     ctx2.textAlign = "center";
@@ -758,7 +798,6 @@
     ctx2.fillStyle = "#063a1f";
     ctx2.fillText("$", tx, ty);
 
-    // блик
     ctx2.globalAlpha = 0.12;
     ctx2.fillStyle = "#fff";
     roundRectLocal(ctx2, bx + bw * 0.08, by + bh * 0.10, bw * 0.46, bh * 0.22, 10);
@@ -768,15 +807,18 @@
     ctx2.restore();
   }
 
-  // Hazards
+  // --- Hazards + telegraph glow ---
   function drawHazard(ctx2, e, t) {
-    switch (e.kind) {
-      case "spikes": return drawSpikes(ctx2, e);
-      case "saw":    return drawSaw(ctx2, e, t);
-      case "bomb":   return drawBomb(ctx2, e, t);
-      case "bolt":   return drawBolt(ctx2, e, t);
-      default:       return drawSpikes(ctx2, e);
-    }
+    const isTelegraphing = e.telegraph && e.age < TELEGRAPH_TIME;
+    if (e.kind === "spikes") return drawSpikes(ctx2, e);
+
+    if (e.kind === "saw") return drawSaw(ctx2, e, t);
+
+    if (e.kind === "bomb") return drawBomb(ctx2, e, t, isTelegraphing);
+
+    if (e.kind === "bolt") return drawBolt(ctx2, e, t, isTelegraphing);
+
+    return drawSpikes(ctx2, e);
   }
 
   function drawSpikes(ctx2, e) {
@@ -842,12 +884,23 @@
     ctx2.restore();
   }
 
-  function drawBomb(ctx2, e, t) {
+  function drawBomb(ctx2, e, t, telegraphing) {
     const cx = e.x + e.w / 2;
     const cy = e.y + e.h / 2;
     const r = Math.min(e.w, e.h) * 0.42;
 
     ctx2.save();
+
+    // телеграф: мягкое свечение
+    if (telegraphing) {
+      const pulse = 0.35 + 0.35 * Math.sin(t * 18);
+      ctx2.globalAlpha = pulse;
+      ctx2.fillStyle = "rgba(255, 120, 70, 1)";
+      ctx2.beginPath();
+      ctx2.arc(cx, cy, r * 1.35, 0, Math.PI * 2);
+      ctx2.fill();
+      ctx2.globalAlpha = 1;
+    }
 
     ctx2.fillStyle = "#1b1f28";
     ctx2.beginPath();
@@ -882,11 +935,20 @@
     ctx2.restore();
   }
 
-  function drawBolt(ctx2, e, t) {
+  function drawBolt(ctx2, e, t, telegraphing) {
     const pulse = 0.75 + 0.25 * Math.sin(t * 10);
 
     ctx2.save();
     ctx2.translate(e.x, e.y);
+
+    // телеграф: более яркая рамка/свечение
+    if (telegraphing) {
+      const glow = 0.30 + 0.35 * Math.sin(t * 20);
+      ctx2.globalAlpha = glow;
+      ctx2.fillStyle = "rgba(160, 220, 255, 1)";
+      ctx2.fillRect(e.w * 0.10, e.h * 0.05, e.w * 0.80, e.h * 0.90);
+      ctx2.globalAlpha = 1;
+    }
 
     ctx2.globalAlpha = 0.9;
     ctx2.fillStyle = `rgba(160, 220, 255, ${pulse})`;
@@ -923,7 +985,6 @@
     requestAnimationFrame(loop);
   }
 
-  // iOS: предотвращаем жесты масштаба
   document.addEventListener("gesturestart", (e) => e.preventDefault());
 
   window.addEventListener("resize", () => {
