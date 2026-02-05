@@ -423,50 +423,72 @@
     const wallH = world.h * 0.52;
     const floorY = wallH;
 
-    // wall
-    ctx.fillStyle = "#e8f2ee";
+    // wall gradient (контраст под вывеску)
+    const wg = ctx.createLinearGradient(0, 0, 0, wallH);
+    wg.addColorStop(0, "#dff2eb");
+    wg.addColorStop(0.55, "#e8f7f2");
+    wg.addColorStop(1, "#d8efe6");
+    ctx.fillStyle = wg;
     ctx.fillRect(0, 0, world.w, wallH);
 
-    // sign "АПТЕКА"
-    const signW = Math.min(world.w * 0.56, 520);
-    const signH = Math.max(52, wallH * 0.12);
+    // subtle dark band behind sign to make it pop
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = "#0b0f14";
+    ctx.fillRect(0, wallH * 0.02, world.w, wallH * 0.18);
+    ctx.globalAlpha = 1;
+
+    // sign "АПТЕКА" (сильнее выделяем)
+    const signW = Math.min(world.w * 0.62, 560);
+    const signH = Math.max(58, wallH * 0.13);
     const signX = world.w * 0.50 - signW / 2;
-    const signY = wallH * 0.04;
+    const signY = wallH * 0.035;
 
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = "#ffffff";
-    roundRectAbs(signX, signY, signW, signH, 18);
-    ctx.fill();
-
-    ctx.globalAlpha = 0.15;
+    // outer glow
+    ctx.globalAlpha = 0.22;
     ctx.fillStyle = "#1fbf6a";
-    roundRectAbs(signX - 8, signY - 8, signW + 16, signH + 16, 22);
+    roundRectAbs(signX - 18, signY - 14, signW + 36, signH + 28, 26);
     ctx.fill();
     ctx.globalAlpha = 1;
 
+    // sign plate
+    ctx.fillStyle = "#0f8f50";
+    roundRectAbs(signX, signY, signW, signH, 20);
+    ctx.fill();
+
+    // inner shine
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = "#ffffff";
+    roundRectAbs(signX + 10, signY + 8, signW - 20, signH * 0.42, 16);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // border
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "rgba(255,255,255,0.65)";
+    roundRectAbs(signX, signY, signW, signH, 20);
+    ctx.stroke();
+
+    // sign text
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const fz = Math.max(22, Math.floor(signH * 0.55));
+    const fz = Math.max(26, Math.floor(signH * 0.58));
     ctx.font = `900 ${fz}px system-ui`;
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = "rgba(0,0,0,0.12)";
+
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
     ctx.strokeText("АПТЕКА", signX + signW / 2, signY + signH / 2);
-    ctx.fillStyle = "#1fbf6a";
+
+    ctx.fillStyle = "#ffffff";
     ctx.fillText("АПТЕКА", signX + signW / 2, signY + signH / 2);
 
-    // posters
-    drawPoster(world.w * 0.76, wallH * 0.10, 150, 86, "-15%", "#ff6b6b");
-    drawPoster(world.w * 0.70, wallH * 0.24, 190, 86, "Витамины", "#f6d36b");
-    drawPoster(world.w * 0.72, wallH * 0.38, 210, 86, "Антисептики", "#2b7cff");
-
-    // pharmacy cross left
+    // pharmacy cross left (оставляем как атмосферу)
     const crossX = world.w * 0.12;
-    const crossY = wallH * 0.20;
+    const crossY = wallH * 0.22;
     const crossS = Math.max(52, Math.min(96, world.w * 0.10));
 
     ctx.save();
     ctx.translate(crossX, crossY);
-    ctx.globalAlpha = 0.95;
+    ctx.globalAlpha = 0.92;
     ctx.fillStyle = "#1fbf6a";
     roundRectAbsLocal(-crossS * 0.18, -crossS * 0.45, crossS * 0.36, crossS * 0.90, 14);
     ctx.fill();
@@ -481,11 +503,14 @@
     ctx.restore();
     ctx.globalAlpha = 1;
 
-    // shelves (boxes)
+    // posters: оставляем ТОЛЬКО -15% (по просьбе)
+    drawPoster(world.w * 0.76, wallH * 0.12, 150, 86, "-15%", "#ff6b6b");
+
+    // shelves (medicine boxes)
     const shelfCount = Math.max(3, Math.floor(world.w / 220));
     const shelfW = world.w / shelfCount * 0.80;
     const shelfH = wallH * 0.34;
-    const shelfY = wallH * 0.18;
+    const shelfY = wallH * 0.20;
 
     for (let i = 0; i < shelfCount; i++) {
       const slotW = world.w / shelfCount;
@@ -495,7 +520,7 @@
       roundRectAbs(sx, shelfY, shelfW, shelfH, 18);
       ctx.fill();
 
-      ctx.globalAlpha = 0.42;
+      ctx.globalAlpha = 0.40;
       ctx.fillStyle = "#bfe3ff";
       roundRectAbs(sx + 6, shelfY + 6, shelfW - 12, shelfH - 12, 14);
       ctx.fill();
@@ -541,7 +566,7 @@
     drawPharmacistSilhouette(world.w * 0.54, deskY - deskH * 0.05, deskH * 1.05);
     drawCashAndTerminal(world.w * 0.78, deskY + deskH * 0.18, deskH * 0.70);
 
-    // ticker (after desk, visible)
+    // ticker (after desk, visible) — консультацию заменили на иммуномодуляторы
     const tickerH = Math.max(30, wallH * 0.07);
     const tickerY = Math.max(10, deskY - tickerH - 10);
 
@@ -555,7 +580,7 @@
     roundRectAbs(world.w * 0.08, tickerY, world.w * 0.84, tickerH, 14);
     ctx.clip();
 
-    const text = "Скидки • Витамины • Антисептики • Консультация • ";
+    const text = "Скидки • Витамины • Антисептики • Иммуномодуляторы • ";
     ctx.font = `900 ${Math.floor(tickerH * 0.58)}px system-ui`;
     ctx.fillStyle = "rgba(255,255,255,0.98)";
     ctx.textAlign = "left";
@@ -595,7 +620,10 @@
     }
 
     // vignette
-    const g = ctx.createRadialGradient(world.w / 2, world.h * 0.65, world.w * 0.1, world.w / 2, world.h * 0.65, world.w * 0.9);
+    const g = ctx.createRadialGradient(
+      world.w / 2, world.h * 0.65, world.w * 0.1,
+      world.w / 2, world.h * 0.65, world.w * 0.9
+    );
     g.addColorStop(0, "rgba(0,0,0,0)");
     g.addColorStop(1, "rgba(0,0,0,0.18)");
     ctx.fillStyle = g;
@@ -623,14 +651,14 @@
     roundRectAbs(X + 10, Y + 10, W - 20, H * 0.26, 12);
     ctx.fill();
 
-    // auto-fit
+    // auto-fit text (короткое -15% всегда влезет)
     ctx.globalAlpha = 1;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#1a2330";
 
     const maxTextW = W - 22;
-    let fontSize = Math.max(14, Math.floor(H * 0.30));
+    let fontSize = Math.max(14, Math.floor(H * 0.32));
     ctx.font = `900 ${fontSize}px system-ui`;
 
     while (ctx.measureText(text).width > maxTextW && fontSize > 12) {
@@ -882,11 +910,11 @@
 
   // -------------------- Items --------------------
   function drawBucket(ctx2, e, t) {
-    const x = e.x, y = e.y, w = e.w, h = e.h;
-    const wobble = Math.sin(t * 6 + x * 0.02) * (w * 0.02);
+    const w = e.w, h = e.h;
+    const wobble = Math.sin(t * 6 + e.x * 0.02) * (w * 0.02);
 
     ctx2.save();
-    ctx2.translate(x + w / 2, y + h / 2);
+    ctx2.translate(e.x + w / 2, e.y + h / 2);
     ctx2.rotate(wobble * 0.02);
     ctx2.translate(-w / 2, -h / 2);
 
@@ -916,7 +944,6 @@
 
     ctx2.fillStyle = "#e8e9f2";
     ctx2.fillRect(bucketX, bucketY, bucketW, bucketH * 0.14);
-
     ctx2.restore();
 
     ctx2.strokeStyle = "rgba(0,0,0,0.45)";
@@ -980,11 +1007,11 @@
   }
 
   function drawMoney(ctx2, e, t) {
-    const x = e.x, y = e.y, w = e.w, h = e.h;
-    const tilt = Math.sin(t * 7 + x * 0.03) * 0.06;
+    const w = e.w, h = e.h;
+    const tilt = Math.sin(t * 7 + e.x * 0.03) * 0.06;
 
     ctx2.save();
-    ctx2.translate(x + w / 2, y + h / 2);
+    ctx2.translate(e.x + w / 2, e.y + h / 2);
     ctx2.rotate(tilt);
     ctx2.translate(-w / 2, -h / 2);
 
@@ -1133,7 +1160,7 @@
 
     ctx2.fillStyle = "#1b1f28";
     ctx2.beginPath();
-    ctx2.arc(cx, cy, r, 0, Math.PI * 2); // <-- ВАЖНО: тут без мусора
+    ctx2.arc(cx, cy, r, 0, Math.PI * 2);
     ctx2.fill();
 
     ctx2.globalAlpha = 0.25;
