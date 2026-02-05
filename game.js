@@ -14,9 +14,13 @@
   const world = {
     w: 0, h: 0,
     t: 0, lastTs: 0,
-    running: false, gameOver: false,
+    running: false,
+    gameOver: false,
 
-    score: 0, highScore: 0, lives: 3, combo: 0,
+    score: 0,
+    highScore: 0,
+    lives: 3,
+    combo: 0,
 
     speed: 240,
     spawnBase: 0.85,
@@ -411,7 +415,7 @@
     }
   }
 
-  // -------------------- Pharmacy background (NO price tags) --------------------
+  // -------------------- Background: Pharmacy --------------------
   function drawPharmacyBackground() {
     ctx.fillStyle = "#0e1218";
     ctx.fillRect(0, 0, world.w, world.h);
@@ -423,7 +427,7 @@
     ctx.fillStyle = "#e8f2ee";
     ctx.fillRect(0, 0, world.w, wallH);
 
-    // lightbox sign "АПТЕКА"
+    // sign "АПТЕКА"
     const signW = Math.min(world.w * 0.56, 520);
     const signH = Math.max(52, wallH * 0.12);
     const signX = world.w * 0.50 - signW / 2;
@@ -450,7 +454,12 @@
     ctx.fillStyle = "#1fbf6a";
     ctx.fillText("АПТЕКА", signX + signW / 2, signY + signH / 2);
 
-    // cross
+    // posters
+    drawPoster(world.w * 0.76, wallH * 0.10, 150, 86, "-15%", "#ff6b6b");
+    drawPoster(world.w * 0.70, wallH * 0.24, 190, 86, "Витамины", "#f6d36b");
+    drawPoster(world.w * 0.72, wallH * 0.38, 210, 86, "Антисептики", "#2b7cff");
+
+    // pharmacy cross left
     const crossX = world.w * 0.12;
     const crossY = wallH * 0.20;
     const crossS = Math.max(52, Math.min(96, world.w * 0.10));
@@ -472,7 +481,7 @@
     ctx.restore();
     ctx.globalAlpha = 1;
 
-    // shelves (boxes only, no tags)
+    // shelves (medicine boxes)
     const shelfCount = Math.max(3, Math.floor(world.w / 220));
     const shelfW = world.w / shelfCount * 0.80;
     const shelfH = wallH * 0.34;
@@ -516,9 +525,27 @@
       }
     }
 
-    // ticker
-    const tickerH = Math.max(26, wallH * 0.06);
-    const tickerY = wallH - tickerH - 6;
+    // counter/desk
+    const deskH = wallH * 0.18;
+    const deskY = wallH - deskH;
+
+    ctx.fillStyle = "#cfe1da";
+    ctx.fillRect(0, deskY, world.w, deskH);
+
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, deskY, world.w, 6);
+    ctx.globalAlpha = 1;
+
+    // pharmacist silhouette behind desk
+    drawPharmacistSilhouette(world.w * 0.54, deskY - deskH * 0.05, deskH * 1.05);
+
+    // cash register + terminal
+    drawCashAndTerminal(world.w * 0.78, deskY + deskH * 0.18, deskH * 0.70);
+
+    // ticker (ПОСЛЕ стойки, чтобы не перекрывалось)
+    const tickerH = Math.max(30, wallH * 0.07);
+    const tickerY = Math.max(10, deskY - tickerH - 10);
 
     ctx.globalAlpha = 0.95;
     ctx.fillStyle = "#1fbf6a";
@@ -531,26 +558,18 @@
     ctx.clip();
 
     const text = "Скидки • Витамины • Антисептики • Консультация • ";
-    ctx.font = `800 ${Math.floor(tickerH * 0.55)}px system-ui`;
-    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.font = `900 ${Math.floor(tickerH * 0.58)}px system-ui`;
+    ctx.fillStyle = "rgba(255,255,255,0.98)";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
 
-    const speed = 120;
-    const offset = (world.t * speed) % (world.w * 0.84);
-    ctx.fillText(text + text + text, world.w * 0.08 + 12 - offset, tickerY + tickerH / 2);
+    const speed = 140;
+    const trackW = world.w * 0.84;
+    const offset = (world.t * speed) % trackW;
+
+    ctx.fillText(text + text + text, world.w * 0.08 + 14 - offset, tickerY + tickerH / 2);
 
     ctx.restore();
-    ctx.globalAlpha = 1;
-
-    // desk
-    const deskH = wallH * 0.18;
-    ctx.fillStyle = "#cfe1da";
-    ctx.fillRect(0, wallH - deskH, world.w, deskH);
-
-    ctx.globalAlpha = 0.12;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, wallH - deskH, world.w, 6);
     ctx.globalAlpha = 1;
 
     // floor tiles
@@ -585,6 +604,153 @@
     ctx.fillRect(0, 0, world.w, world.h);
   }
 
+  function drawPoster(x, y, w, h, text, accent) {
+    const W = Math.max(120, Math.min(w, world.w * 0.36));
+    const H = Math.max(66, Math.min(h, world.h * 0.115));
+    const X = clamp(x, 10, world.w - W - 10);
+    const Y = clamp(y, 10, (world.h * 0.52) - H - 10);
+
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "#ffffff";
+    roundRectAbs(X, Y, W, H, 16);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = accent;
+    roundRectAbs(X - 6, Y - 6, W + 12, H + 12, 18);
+    ctx.fill();
+
+    // header bar
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = accent;
+    roundRectAbs(X + 10, Y + 10, W - 20, H * 0.26, 12);
+    ctx.fill();
+
+    // auto-fit text
+    ctx.globalAlpha = 1;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#1a2330";
+
+    const maxTextW = W - 22;
+    let fontSize = Math.max(14, Math.floor(H * 0.30));
+    ctx.font = `900 ${fontSize}px system-ui`;
+
+    while (ctx.measureText(text).width > maxTextW && fontSize > 12) {
+      fontSize -= 1;
+      ctx.font = `900 ${fontSize}px system-ui`;
+    }
+
+    ctx.fillText(text, X + W / 2, Y + H * 0.64);
+
+    // tape corners
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = "#1a2330";
+    ctx.fillRect(X + 8, Y + 8, 14, 6);
+    ctx.fillRect(X + W - 22, Y + 8, 14, 6);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawPharmacistSilhouette(centerX, headY, scale) {
+    const s = Math.max(60, Math.min(scale, 160));
+    const headR = s * 0.18;
+    const neckW = s * 0.20;
+    const neckH = s * 0.10;
+    const bodyW = s * 0.70;
+    const bodyH = s * 0.55;
+
+    const x = centerX;
+    const y = headY;
+
+    ctx.save();
+    ctx.globalAlpha = 0.26;
+    ctx.fillStyle = "#0b0f14";
+
+    ctx.beginPath();
+    ctx.arc(x, y, headR, 0, Math.PI * 2);
+    ctx.fill();
+
+    roundRectAbs(x - neckW / 2, y + headR * 0.65, neckW, neckH, 10);
+    ctx.fill();
+
+    roundRectAbs(x - bodyW / 2, y + headR + neckH * 0.5, bodyW, bodyH, 28);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(x - headR * 0.35, y - headR * 0.15, headR * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawCashAndTerminal(x, y, scale) {
+    const s = Math.max(52, Math.min(scale, 150));
+
+    const baseW = s * 0.85;
+    const baseH = s * 0.38;
+    const baseX = x - baseW / 2;
+    const baseY = y + s * 0.30;
+
+    ctx.save();
+
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = "#000";
+    roundRectAbs(baseX + 4, baseY + 6, baseW, baseH, 14);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "#1a2330";
+    roundRectAbs(baseX, baseY, baseW, baseH, 14);
+    ctx.fill();
+
+    const topW = s * 0.62;
+    const topH = s * 0.28;
+    const topX = x - topW * 0.62;
+    const topY = y + s * 0.10;
+
+    ctx.fillStyle = "#2a3445";
+    roundRectAbs(topX, topY, topW, topH, 14);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.75;
+    ctx.fillStyle = "#9cc9ff";
+    roundRectAbs(topX + topW * 0.16, topY + topH * 0.18, topW * 0.68, topH * 0.46, 10);
+    ctx.fill();
+    ctx.globalAlpha = 0.95;
+
+    const termW = s * 0.28;
+    const termH = s * 0.32;
+    const termX = x + baseW * 0.18;
+    const termY = y + s * 0.06;
+
+    ctx.fillStyle = "#2a3445";
+    roundRectAbs(termX, termY, termW, termH, 12);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.70;
+    ctx.fillStyle = "#bfe3ff";
+    roundRectAbs(termX + termW * 0.14, termY + termH * 0.12, termW * 0.72, termH * 0.38, 10);
+    ctx.fill();
+    ctx.globalAlpha = 0.55;
+
+    ctx.fillStyle = "#ffffff";
+    const dots = 3;
+    for (let r = 0; r < dots; r++) {
+      for (let c = 0; c < dots; c++) {
+        const dx = termX + termW * 0.22 + c * (termW * 0.22);
+        const dy = termY + termH * 0.62 + r * (termH * 0.10);
+        ctx.beginPath();
+        ctx.arc(dx, dy, Math.max(1.5, s * 0.012), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // --- Helpers for rounded rects ---
   function roundRectAbs(x, y, w, h, r) {
     const rr = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
@@ -607,7 +773,18 @@
     ctx.closePath();
   }
 
-  // --- Player render ---
+  function roundRectLocal(ctx2, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx2.beginPath();
+    ctx2.moveTo(x + rr, y);
+    ctx2.arcTo(x + w, y, x + w, y + h, rr);
+    ctx2.arcTo(x + w, y + h, x, y + h, rr);
+    ctx2.arcTo(x, y + h, x, y, rr);
+    ctx2.arcTo(x, y, x + w, y, rr);
+    ctx2.closePath();
+  }
+
+  // -------------------- Player render --------------------
   function drawPlayer() {
     const x = player.x, y = player.y, w = player.w, h = player.h;
     const flashing = player.invuln > 0 && Math.floor(world.t * 14) % 2 === 0;
@@ -683,10 +860,12 @@
     ctx.restore();
   }
 
+  // -------------------- Entities render --------------------
   function drawEntities() {
     for (const e of entities) if (e.drawFn) e.drawFn(ctx, e, world.t);
   }
 
+  // -------------------- Game over overlay --------------------
   function drawGameOverOverlay() {
     ctx.save();
     ctx.globalAlpha = 0.62;
@@ -707,19 +886,7 @@
     ctx.restore();
   }
 
-  // -------------------- Procedural items + hazards --------------------
-  function roundRectLocal(ctx2, x, y, w, h, r) {
-    const rr = Math.min(r, w / 2, h / 2);
-    ctx2.beginPath();
-    ctx2.moveTo(x + rr, y);
-    ctx2.arcTo(x + w, y, x + w, y + h, rr);
-    ctx2.arcTo(x + w, y + h, x, y + h, rr);
-    ctx2.arcTo(x, y + h, x, y, rr);
-    ctx2.arcTo(x, y, x + w, y, rr);
-    ctx2.closePath();
-  }
-
-  // --- KFC bucket ---
+  // -------------------- Procedural items --------------------
   function drawBucket(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const wobble = Math.sin(t * 6 + x * 0.02) * (w * 0.02);
@@ -818,7 +985,6 @@
     }
   }
 
-  // --- Money ---
   function drawMoney(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const tilt = Math.sin(t * 7 + x * 0.03) * 0.06;
@@ -881,7 +1047,7 @@
     ctx2.restore();
   }
 
-  // --- Hazards ---
+  // -------------------- Hazards --------------------
   function drawHazard(ctx2, e, t) {
     const isTelegraphing = e.telegraph && e.age < TELEGRAPH_TIME;
     if (e.kind === "spikes") return drawSpikes(ctx2, e);
@@ -973,7 +1139,7 @@
 
     ctx2.fillStyle = "#1b1f28";
     ctx2.beginPath();
-    ctx2.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx2.arc(cx, cy, cy, r, 0, Math.PI * 2);
     ctx2.fill();
 
     ctx2.globalAlpha = 0.25;
@@ -1004,14 +1170,12 @@
     ctx2.restore();
   }
 
-  // GOLD lightning (bolt)
   function drawBoltGold(ctx2, e, t, telegraphing) {
     const pulse = 0.70 + 0.30 * Math.sin(t * 10);
 
     ctx2.save();
     ctx2.translate(e.x, e.y);
 
-    // телеграф: золотое свечение (не голубое)
     if (telegraphing) {
       const glow = 0.30 + 0.35 * Math.sin(t * 20);
       ctx2.globalAlpha = glow;
@@ -1020,7 +1184,6 @@
       ctx2.globalAlpha = 1;
     }
 
-    // сама молния
     ctx2.globalAlpha = 0.95;
     ctx2.fillStyle = `rgba(246, 211, 107, ${pulse})`;
 
@@ -1034,13 +1197,11 @@
     ctx2.closePath();
     ctx2.fill();
 
-    // контур для читаемости
     ctx2.globalAlpha = 0.80;
     ctx2.strokeStyle = "rgba(0,0,0,0.35)";
     ctx2.lineWidth = Math.max(2, e.w * 0.05);
     ctx2.stroke();
 
-    // лёгкий блик
     ctx2.globalAlpha = 0.16;
     ctx2.fillStyle = "#fff";
     ctx2.fillRect(e.w * 0.18, e.h * 0.12, e.w * 0.64, e.h * 0.20);
@@ -1048,7 +1209,7 @@
     ctx2.restore();
   }
 
-  // --- Loop ---
+  // -------------------- Loop --------------------
   function loop(ts) {
     if (!world.lastTs) world.lastTs = ts;
     const dt = Math.min(0.033, (ts - world.lastTs) / 1000);
