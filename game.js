@@ -113,7 +113,7 @@
 
   function movementBounds() {
     const bottomPad = Math.max(20, world.h * 0.05);
-    const topLimit = Math.max(70, world.h * 0.42); // немного вверх
+    const topLimit = Math.max(70, world.h * 0.42);
     const yMax = world.h - player.h - bottomPad;
     const yMin = yMax - topLimit;
     return { yMin, yMax };
@@ -411,7 +411,7 @@
     }
   }
 
-  // -------------------- Pharmacy background (UPGRADED) --------------------
+  // -------------------- Pharmacy background (NO price tags) --------------------
   function drawPharmacyBackground() {
     ctx.fillStyle = "#0e1218";
     ctx.fillRect(0, 0, world.w, world.h);
@@ -450,7 +450,7 @@
     ctx.fillStyle = "#1fbf6a";
     ctx.fillText("АПТЕКА", signX + signW / 2, signY + signH / 2);
 
-    // pharmacy cross left
+    // cross
     const crossX = world.w * 0.12;
     const crossY = wallH * 0.20;
     const crossS = Math.max(52, Math.min(96, world.w * 0.10));
@@ -472,7 +472,7 @@
     ctx.restore();
     ctx.globalAlpha = 1;
 
-    // shelves
+    // shelves (boxes only, no tags)
     const shelfCount = Math.max(3, Math.floor(world.w / 220));
     const shelfW = world.w / shelfCount * 0.80;
     const shelfH = wallH * 0.34;
@@ -482,19 +482,16 @@
       const slotW = world.w / shelfCount;
       const sx = i * slotW + (slotW - shelfW) / 2;
 
-      // frame
       ctx.fillStyle = "#d6e7e0";
       roundRectAbs(sx, shelfY, shelfW, shelfH, 18);
       ctx.fill();
 
-      // glass
-      ctx.globalAlpha = 0.45;
+      ctx.globalAlpha = 0.42;
       ctx.fillStyle = "#bfe3ff";
       roundRectAbs(sx + 6, shelfY + 6, shelfW - 12, shelfH - 12, 14);
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      // medicine boxes + price tags
       const rows = 2;
       const cols = 6;
       for (let r = 0; r < rows; r++) {
@@ -509,37 +506,17 @@
           roundRectAbs(bx, by, bw, bh, 10);
           ctx.fill();
 
-          // label highlight
-          ctx.globalAlpha = 0.20;
+          ctx.globalAlpha = 0.18;
           ctx.fillStyle = "#fff";
           roundRectAbs(bx + 4, by + 4, bw * 0.55, bh * 0.35, 8);
           ctx.fill();
-          ctx.globalAlpha = 1;
 
-          // price tag (small white tag)
-          const tagW = bw * 0.60;
-          const tagH = Math.max(12, bh * 0.22);
-          const tx = bx + bw * 0.18;
-          const ty = by + bh - tagH - 4;
-
-          ctx.globalAlpha = 0.92;
-          ctx.fillStyle = "#ffffff";
-          roundRectAbs(tx, ty, tagW, tagH, 8);
-          ctx.fill();
-
-          ctx.globalAlpha = 0.85;
-          ctx.fillStyle = "#1a2330";
-          ctx.font = `800 ${Math.max(10, Math.floor(tagH * 0.60))}px system-ui`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          const price = 99 + ((i + r + c) * 17) % 399;
-          ctx.fillText(`${price}₽`, tx + tagW / 2, ty + tagH / 2);
           ctx.globalAlpha = 1;
         }
       }
     }
 
-    // running ticker (simple)
+    // ticker
     const tickerH = Math.max(26, wallH * 0.06);
     const tickerY = wallH - tickerH - 6;
 
@@ -559,7 +536,7 @@
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
 
-    const speed = 120; // px/s
+    const speed = 120;
     const offset = (world.t * speed) % (world.w * 0.84);
     ctx.fillText(text + text + text, world.w * 0.08 + 12 - offset, tickerY + tickerH / 2);
 
@@ -600,7 +577,7 @@
       ctx.stroke();
     }
 
-    // subtle vignette
+    // vignette
     const g = ctx.createRadialGradient(world.w / 2, world.h * 0.65, world.w * 0.1, world.w / 2, world.h * 0.65, world.w * 0.9);
     g.addColorStop(0, "rgba(0,0,0,0)");
     g.addColorStop(1, "rgba(0,0,0,0.18)");
@@ -742,6 +719,7 @@
     ctx2.closePath();
   }
 
+  // --- KFC bucket ---
   function drawBucket(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const wobble = Math.sin(t * 6 + x * 0.02) * (w * 0.02);
@@ -840,6 +818,7 @@
     }
   }
 
+  // --- Money ---
   function drawMoney(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const tilt = Math.sin(t * 7 + x * 0.03) * 0.06;
@@ -902,12 +881,13 @@
     ctx2.restore();
   }
 
+  // --- Hazards ---
   function drawHazard(ctx2, e, t) {
     const isTelegraphing = e.telegraph && e.age < TELEGRAPH_TIME;
     if (e.kind === "spikes") return drawSpikes(ctx2, e);
     if (e.kind === "saw") return drawSaw(ctx2, e, t);
     if (e.kind === "bomb") return drawBomb(ctx2, e, t, isTelegraphing);
-    if (e.kind === "bolt") return drawBolt(ctx2, e, t, isTelegraphing);
+    if (e.kind === "bolt") return drawBoltGold(ctx2, e, t, isTelegraphing);
     return drawSpikes(ctx2, e);
   }
 
@@ -1024,22 +1004,25 @@
     ctx2.restore();
   }
 
-  function drawBolt(ctx2, e, t, telegraphing) {
-    const pulse = 0.75 + 0.25 * Math.sin(t * 10);
+  // GOLD lightning (bolt)
+  function drawBoltGold(ctx2, e, t, telegraphing) {
+    const pulse = 0.70 + 0.30 * Math.sin(t * 10);
 
     ctx2.save();
     ctx2.translate(e.x, e.y);
 
+    // телеграф: золотое свечение (не голубое)
     if (telegraphing) {
       const glow = 0.30 + 0.35 * Math.sin(t * 20);
       ctx2.globalAlpha = glow;
-      ctx2.fillStyle = "rgba(160, 220, 255, 1)";
+      ctx2.fillStyle = "rgba(246, 211, 107, 1)";
       ctx2.fillRect(e.w * 0.10, e.h * 0.05, e.w * 0.80, e.h * 0.90);
       ctx2.globalAlpha = 1;
     }
 
-    ctx2.globalAlpha = 0.9;
-    ctx2.fillStyle = `rgba(160, 220, 255, ${pulse})`;
+    // сама молния
+    ctx2.globalAlpha = 0.95;
+    ctx2.fillStyle = `rgba(246, 211, 107, ${pulse})`;
 
     ctx2.beginPath();
     ctx2.moveTo(e.w * 0.55, 0);
@@ -1051,8 +1034,16 @@
     ctx2.closePath();
     ctx2.fill();
 
-    ctx2.globalAlpha = 0.20;
-    ctx2.fillRect(e.w * 0.15, e.h * 0.1, e.w * 0.7, e.h * 0.8);
+    // контур для читаемости
+    ctx2.globalAlpha = 0.80;
+    ctx2.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx2.lineWidth = Math.max(2, e.w * 0.05);
+    ctx2.stroke();
+
+    // лёгкий блик
+    ctx2.globalAlpha = 0.16;
+    ctx2.fillStyle = "#fff";
+    ctx2.fillRect(e.w * 0.18, e.h * 0.12, e.w * 0.64, e.h * 0.20);
 
     ctx2.restore();
   }
