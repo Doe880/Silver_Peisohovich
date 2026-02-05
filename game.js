@@ -8,23 +8,15 @@
   const comboEl = document.getElementById("combo");
   const restartBtn = document.getElementById("btn-restart");
 
-  // -------------------- World / HiDPI --------------------
   const STORAGE_KEY_HS = "silver_peisohovich_highscore";
-
-  const TELEGRAPH_TIME = 0.30; // сек: подсветка перед активацией опасности
+  const TELEGRAPH_TIME = 0.30;
 
   const world = {
-    w: 0,
-    h: 0,
-    t: 0,
-    lastTs: 0,
-    running: false,
-    gameOver: false,
+    w: 0, h: 0,
+    t: 0, lastTs: 0,
+    running: false, gameOver: false,
 
-    score: 0,
-    highScore: 0,
-    lives: 3,
-    combo: 0,
+    score: 0, highScore: 0, lives: 3, combo: 0,
 
     speed: 240,
     spawnBase: 0.85,
@@ -48,7 +40,7 @@
     world.h = h;
   }
 
-  // -------------------- Assets (только лицо) --------------------
+  // --- assets: only face ---
   const IMG = {};
   const assets = { face: "assets/face.png" };
 
@@ -69,7 +61,6 @@
     });
   }
 
-  // -------------------- Helpers --------------------
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
   function aabb(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -96,23 +87,23 @@
     }
   }
 
-  // -------------------- Vibration --------------------
   function vibrate(ms) {
     try {
-      if (navigator && typeof navigator.vibrate === "function") {
-        navigator.vibrate(ms);
-      }
+      if (navigator && typeof navigator.vibrate === "function") navigator.vibrate(ms);
     } catch (_) {}
   }
 
-  // -------------------- Player --------------------
+  // --- Player: now can move a bit up ---
   const player = {
-    x: 0,
-    y: 0,
-    w: 72,
-    h: 96,
+    x: 0, y: 0,
+    w: 72, h: 96,
+
     targetX: 0,
+    targetY: 0,
+
     vx: 0,
+    vy: 0,
+
     maxSpeed: 1400,
     invuln: 0,
 
@@ -120,8 +111,16 @@
     slowFactor: 0.55,
   };
 
+  function movementBounds() {
+    // зона движения: низ экрана, но можно чуть вверх
+    const bottomPad = Math.max(20, world.h * 0.05);
+    const topLimit = Math.max(70, world.h * 0.42); // "немного вверх"
+    const yMax = world.h - player.h - bottomPad;
+    const yMin = yMax - topLimit;
+    return { yMin, yMax };
+  }
+
   function getPlayerHitbox() {
-    // Чуть "честнее": не весь прямоугольник, а внутренняя область
     const padX = player.w * 0.18;
     const padY = player.h * 0.12;
     return {
@@ -132,34 +131,33 @@
     };
   }
 
-  // -------------------- Entities --------------------
+  // --- Entities ---
   const entities = [];
-  // {type,x,y,w,h,vy,value,kind,drawFn, telegraph, age}
+  const TYPES = { BUCKET: "bucket", MONEY: "money", HAZARD: "hazard" };
 
-  const TYPES = {
-    BUCKET: "bucket",
-    MONEY: "money",
-    HAZARD: "hazard",
-  };
+  // --- Input (touch drag + keyboard) ---
+  const input = { left: false, right: false, up: false, down: false, dragging: false };
 
-  // -------------------- Input --------------------
-  const input = { left: false, right: false, dragging: false };
-
-  function setTargetFromClientX(clientX) {
+  function setTargetFromClientXY(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
     player.targetX = clamp(x - player.w / 2, 0, world.w - player.w);
+
+    const b = movementBounds();
+    player.targetY = clamp(y - player.h / 2, b.yMin, b.yMax);
   }
 
   canvas.addEventListener("pointerdown", (e) => {
     canvas.setPointerCapture(e.pointerId);
     input.dragging = true;
-    setTargetFromClientX(e.clientX);
+    setTargetFromClientXY(e.clientX, e.clientY);
   });
 
   canvas.addEventListener("pointermove", (e) => {
     if (!input.dragging) return;
-    setTargetFromClientX(e.clientX);
+    setTargetFromClientXY(e.clientX, e.clientY);
   });
 
   canvas.addEventListener("pointerup", () => { input.dragging = false; });
@@ -168,17 +166,21 @@
   window.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft") input.left = true;
     if (e.key === "ArrowRight") input.right = true;
+    if (e.key === "ArrowUp") input.up = true;
+    if (e.key === "ArrowDown") input.down = true;
     if (e.key === "Enter" && world.gameOver) resetGame();
   });
 
   window.addEventListener("keyup", (e) => {
     if (e.key === "ArrowLeft") input.left = false;
     if (e.key === "ArrowRight") input.right = false;
+    if (e.key === "ArrowUp") input.up = false;
+    if (e.key === "ArrowDown") input.down = false;
   });
 
   restartBtn.addEventListener("click", () => resetGame());
 
-  // -------------------- Game Flow --------------------
+  // --- Game flow ---
   function resetGame() {
     entities.length = 0;
 
@@ -200,11 +202,16 @@
     player.h = Math.floor(player.w * 1.30);
 
     player.x = (world.w - player.w) / 2;
-    player.y = world.h - player.h - Math.max(28, Math.floor(world.h * 0.06));
-    player.targetX = player.x;
-    player.vx = 0;
-    player.invuln = 0;
 
+    const b = movementBounds();
+    player.y = b.yMax;
+
+    player.targetX = player.x;
+    player.targetY = player.y;
+
+    player.vx = 0;
+    player.vy = 0;
+    player.invuln = 0;
     player.slowTimer = 0;
 
     syncHud();
@@ -219,26 +226,26 @@
     restartBtn.classList.remove("hidden");
   }
 
-  // -------------------- Effects (hazards) --------------------
+  // --- Hazards effects ---
   function applyHazardEffect(kind) {
     world.combo = 0;
 
     if (kind === "bolt") {
       player.slowTimer = Math.max(player.slowTimer, 2.5);
-      damagePlayer(1, 40); // вибро мягкая
+      damagePlayer(1, 40);
       return;
     }
 
     if (kind === "bomb") {
       world.score = Math.max(0, world.score - 30);
-      damagePlayer(1, 70); // вибро средняя
+      damagePlayer(1, 70);
       saveHighScoreIfNeeded();
       syncHud();
       return;
     }
 
     if (kind === "saw") {
-      damagePlayer(2, 120); // вибро сильная
+      damagePlayer(2, 120);
       return;
     }
 
@@ -250,17 +257,14 @@
       syncHud();
       return;
     }
-
     world.lives -= amount;
     player.invuln = 0.9;
     vibrate(vibMs);
-
     syncHud();
-
     if (world.lives <= 0) endGame();
   }
 
-  // -------------------- Spawning --------------------
+  // --- Spawning ---
   function pickHazardKind() {
     const kinds = ["spikes", "saw", "bomb", "bolt"];
     return kinds[Math.floor(Math.random() * kinds.length)];
@@ -281,7 +285,6 @@
 
     const x = Math.random() * (world.w - size);
     const y = -size - 10;
-
     const vy = world.speed * (0.9 + Math.random() * 0.55);
 
     let value = 0, kind = null, drawFn = null;
@@ -290,50 +293,33 @@
     if (type === TYPES.BUCKET) {
       value = 20;
       kind = "kfc_bucket";
-      drawFn = (ctx2, e, t) => drawBucket(ctx2, e, t);
-    }
-
-    if (type === TYPES.MONEY) {
+      drawFn = (c, e, t) => drawBucket(c, e, t);
+    } else if (type === TYPES.MONEY) {
       value = 10;
       kind = "dollar_bill";
-      drawFn = (ctx2, e, t) => drawMoney(ctx2, e, t);
-    }
-
-    if (type === TYPES.HAZARD) {
+      drawFn = (c, e, t) => drawMoney(c, e, t);
+    } else {
       kind = pickHazardKind();
-      drawFn = (ctx2, e, t) => drawHazard(ctx2, e, t);
-      // телеграф только для молнии/бомбы
+      drawFn = (c, e, t) => drawHazard(c, e, t);
       telegraph = (kind === "bolt" || kind === "bomb");
     }
 
-    entities.push({
-      type, x, y, w: size, h: size,
-      vy,
-      value,
-      kind,
-      drawFn,
-      telegraph,
-      age: 0 // сек с момента спавна
-    });
+    entities.push({ type, x, y, w: size, h: size, vy, value, kind, drawFn, telegraph, age: 0 });
   }
 
-  // -------------------- Custom hitboxes --------------------
+  // --- Hitboxes ---
   function collidesPlayerWithEntity(e) {
     const p = getPlayerHitbox();
 
-    // по умолчанию: AABB
     if (e.type !== TYPES.HAZARD) {
       return aabb(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h);
     }
 
-    // опасности: разные хитбоксы
     if (e.kind === "saw") {
-      // круглый хитбокс
       const cx = e.x + e.w / 2;
       const cy = e.y + e.h / 2;
       const r = Math.min(e.w, e.h) * 0.34;
 
-      // ближайшая точка прямоугольника игрока к центру круга
       const closestX = clamp(cx, p.x, p.x + p.w);
       const closestY = clamp(cy, p.y, p.y + p.h);
 
@@ -343,7 +329,6 @@
     }
 
     if (e.kind === "bolt") {
-      // узкий хитбокс по центру молнии (примерно 35% ширины)
       const bx = e.x + e.w * 0.33;
       const bw = e.w * 0.34;
       const by = e.y + e.h * 0.05;
@@ -351,11 +336,10 @@
       return aabb(p.x, p.y, p.w, p.h, bx, by, bw, bh);
     }
 
-    // spikes/bomb: обычный прямоугольник (но по игроку уже сжатый)
     return aabb(p.x, p.y, p.w, p.h, e.x, e.y, e.w, e.h);
   }
 
-  // -------------------- Update --------------------
+  // --- Update ---
   function update(dt) {
     world.t += dt;
     world.difficultyTimer += dt;
@@ -366,44 +350,47 @@
       world.spawnBase = Math.max(0.35, world.spawnBase - 0.012);
     }
 
-    // замедление
     player.slowTimer = Math.max(0, player.slowTimer - dt);
     const slowMul = player.slowTimer > 0 ? player.slowFactor : 1.0;
 
-    // движение
     const baseSpeed = Math.max(430, world.w * 1.25);
     const keySpeed = baseSpeed * slowMul;
 
+    // keyboard nudges target
     if (input.left) player.targetX -= keySpeed * dt;
     if (input.right) player.targetX += keySpeed * dt;
+    if (input.up) player.targetY -= keySpeed * dt * 0.65;
+    if (input.down) player.targetY += keySpeed * dt * 0.65;
+
+    const b = movementBounds();
     player.targetX = clamp(player.targetX, 0, world.w - player.w);
+    player.targetY = clamp(player.targetY, b.yMin, b.yMax);
 
+    // smooth to target
     const dx = player.targetX - player.x;
-    player.vx = clamp(dx * 18, -player.maxSpeed, player.maxSpeed);
-    player.x = clamp(player.x + player.vx * dt * slowMul, 0, world.w - player.w);
+    const dy = player.targetY - player.y;
 
-    player.y = world.h - player.h - Math.max(28, Math.floor(world.h * 0.06));
+    player.vx = clamp(dx * 18, -player.maxSpeed, player.maxSpeed);
+    player.vy = clamp(dy * 18, -player.maxSpeed, player.maxSpeed);
+
+    player.x = clamp(player.x + player.vx * dt * slowMul, 0, world.w - player.w);
+    player.y = clamp(player.y + player.vy * dt * slowMul, b.yMin, b.yMax);
+
     player.invuln = Math.max(0, player.invuln - dt);
 
-    // спавн
     world.spawnTimer -= dt;
     if (world.spawnTimer <= 0) {
       spawnEntity();
       world.spawnTimer = world.spawnBase * (0.70 + Math.random() * 0.70);
     }
 
-    // entities
     for (let i = entities.length - 1; i >= 0; i--) {
       const e = entities[i];
       e.age += dt;
 
-      // телеграф: первые 0.3 сек молния/бомба НЕ ДАМAЖАТ (просто подсветка)
       const isTelegraphing = e.telegraph && e.age < TELEGRAPH_TIME;
-
-      // движение
       e.y += e.vy * dt;
 
-      // столкновение (если не телеграф)
       if (!isTelegraphing && collidesPlayerWithEntity(e)) {
         if (e.type === TYPES.HAZARD) {
           applyHazardEffect(e.kind);
@@ -417,7 +404,6 @@
         continue;
       }
 
-      // ушло вниз
       if (e.y > world.h + 140) {
         if (e.type !== TYPES.HAZARD) {
           world.combo = 0;
@@ -428,90 +414,134 @@
     }
   }
 
-  // -------------------- Background: спортзал --------------------
-  function drawGymBackground() {
-    ctx.fillStyle = "#0b0f14";
+  // --- Pharmacy background ---
+  function drawPharmacyBackground() {
+    // светлый “аптечный” зал
+    ctx.fillStyle = "#0e1218";
     ctx.fillRect(0, 0, world.w, world.h);
 
-    const wallH = world.h * 0.46;
+    const wallH = world.h * 0.52;
     const floorY = wallH;
 
-    ctx.fillStyle = "#1a2330";
+    // стена (светлая, чистая)
+    ctx.fillStyle = "#e8f2ee";
     ctx.fillRect(0, 0, world.w, wallH);
 
-    const winCount = Math.max(3, Math.floor(world.w / 140));
-    const winW = world.w / winCount * 0.70;
-    const winH = wallH * 0.30;
-    const winY = wallH * 0.10;
+    // верхняя тень
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, world.w, wallH * 0.10);
+    ctx.globalAlpha = 1;
 
-    for (let i = 0; i < winCount; i++) {
-      const slotW = world.w / winCount;
-      const wx = i * slotW + (slotW - winW) / 2;
+    // аптечный крест
+    const crossX = world.w * 0.12;
+    const crossY = wallH * 0.18;
+    const crossS = Math.max(52, Math.min(96, world.w * 0.10));
 
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = "#0f1622";
-      roundRectAbs(wx, winY, winW, winH, 14);
-      ctx.fill();
-
-      ctx.globalAlpha = 0.45;
-      ctx.fillStyle = "#9cc9ff";
-      roundRectAbs(wx + 6, winY + 6, winW - 12, winH - 12, 12);
-      ctx.fill();
-
-      ctx.globalAlpha = 0.30;
-      ctx.strokeStyle = "#0b0f14";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(wx + winW / 2, winY + 6);
-      ctx.lineTo(wx + winW / 2, winY + winH - 6);
-      ctx.stroke();
-
-      ctx.globalAlpha = 1;
-    }
-
-    const hoopX = world.w * 0.82;
-    const hoopY = wallH * 0.58;
+    ctx.save();
+    ctx.translate(crossX, crossY);
     ctx.globalAlpha = 0.95;
-    ctx.fillStyle = "#0f1622";
-    roundRectAbs(hoopX - 70, hoopY - 55, 140, 90, 16);
+    ctx.fillStyle = "#1fbf6a";
+    roundRectAbs(-crossS * 0.18, -crossS * 0.45, crossS * 0.36, crossS * 0.90, 14);
+    ctx.fill();
+    roundRectAbs(-crossS * 0.45, -crossS * 0.18, crossS * 0.90, crossS * 0.36, 14);
     ctx.fill();
 
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = "#e9eef5";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(hoopX - 38, hoopY - 35, 76, 55);
-
-    ctx.strokeStyle = "#ff6b3d";
-    ctx.lineWidth = 6;
+    // лёгкое свечение
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = "#1fbf6a";
     ctx.beginPath();
-    ctx.arc(hoopX, hoopY + 20, 22, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.arc(0, 0, crossS * 0.75, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
 
-    ctx.fillStyle = "#1a1410";
+    // витрина/полки с лекарствами
+    const shelfCount = Math.max(3, Math.floor(world.w / 220));
+    const shelfW = world.w / shelfCount * 0.80;
+    const shelfH = wallH * 0.34;
+    const shelfY = wallH * 0.12;
+
+    for (let i = 0; i < shelfCount; i++) {
+      const slotW = world.w / shelfCount;
+      const sx = i * slotW + (slotW - shelfW) / 2;
+
+      // стеклянная рамка
+      ctx.fillStyle = "#d6e7e0";
+      roundRectAbs(sx, shelfY, shelfW, shelfH, 18);
+      ctx.fill();
+
+      // стекло
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = "#bfe3ff";
+      roundRectAbs(sx + 6, shelfY + 6, shelfW - 12, shelfH - 12, 14);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // “коробки лекарств” внутри
+      const rows = 2;
+      const cols = 6;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const bx = sx + 18 + c * ((shelfW - 36) / cols);
+          const by = shelfY + 16 + r * ((shelfH - 32) / rows);
+          const bw = (shelfW - 52) / cols * 0.78;
+          const bh = (shelfH - 46) / rows * 0.72;
+
+          ctx.globalAlpha = 0.85;
+          ctx.fillStyle = (c + r) % 3 === 0 ? "#ff6b6b" : (c + r) % 3 === 1 ? "#2b7cff" : "#f6d36b";
+          roundRectAbs(bx, by, bw, bh, 10);
+          ctx.fill();
+
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = "#fff";
+          roundRectAbs(bx + 4, by + 4, bw * 0.55, bh * 0.35, 8);
+          ctx.fill();
+
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+
+    // стойка фармацевта (передний план)
+    const deskH = wallH * 0.18;
+    ctx.fillStyle = "#cfe1da";
+    ctx.fillRect(0, wallH - deskH, world.w, deskH);
+
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, wallH - deskH, world.w, 6);
+    ctx.globalAlpha = 1;
+
+    // пол (плитка)
+    ctx.fillStyle = "#dfe7ee";
     ctx.fillRect(0, floorY, world.w, world.h - floorY);
 
-    const plankH = Math.max(22, Math.floor(world.h * 0.045));
-    const scroll = (world.t * 140) % plankH;
-    for (let y = floorY - plankH; y < world.h + plankH; y += plankH) {
+    const tile = Math.max(36, Math.floor(world.w * 0.08));
+    const scroll = (world.t * 90) % tile;
+
+    ctx.strokeStyle = "rgba(0,0,0,0.08)";
+    ctx.lineWidth = 2;
+
+    for (let y = floorY - tile; y < world.h + tile; y += tile) {
       const yy = y + scroll;
-      ctx.globalAlpha = 0.22;
-      ctx.fillStyle = "#3a2a1f";
-      ctx.fillRect(0, yy, world.w, 2);
+      ctx.beginPath();
+      ctx.moveTo(0, yy);
+      ctx.lineTo(world.w, yy);
+      ctx.stroke();
     }
+    for (let x = 0; x < world.w + tile; x += tile) {
+      ctx.beginPath();
+      ctx.moveTo(x, floorY);
+      ctx.lineTo(x, world.h);
+      ctx.stroke();
+    }
+
+    // лёгкая виньетка
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, world.w, world.h);
     ctx.globalAlpha = 1;
-
-    ctx.strokeStyle = "rgba(230, 230, 230, 0.35)";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(0, floorY + (world.h - floorY) * 0.25);
-    ctx.lineTo(world.w, floorY + (world.h - floorY) * 0.25);
-
-    const cx = world.w * 0.5;
-    const cy = floorY + (world.h - floorY) * 0.55;
-    const r = Math.min(world.w, world.h) * 0.14;
-    ctx.moveTo(cx + r, cy);
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.stroke();
   }
 
   function roundRectAbs(x, y, w, h, r) {
@@ -525,13 +555,9 @@
     ctx.closePath();
   }
 
-  // -------------------- Player Render --------------------
+  // --- Player render (same) ---
   function drawPlayer() {
-    const x = player.x;
-    const y = player.y;
-    const w = player.w;
-    const h = player.h;
-
+    const x = player.x, y = player.y, w = player.w, h = player.h;
     const flashing = player.invuln > 0 && Math.floor(world.t * 14) % 2 === 0;
     const slowed = player.slowTimer > 0;
 
@@ -544,12 +570,12 @@
     const bodyH = h * 0.56;
 
     ctx.globalAlpha *= 0.95;
-    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
     roundRectAbs(bodyX + 3, bodyY + 6, bodyW, bodyH, 18);
     ctx.fill();
 
     ctx.globalAlpha = flashing ? 0.55 : 1;
-    ctx.fillStyle = "#f6f7fb";
+    ctx.fillStyle = "#ffffff";
     roundRectAbs(bodyX, bodyY, bodyW, bodyH, 18);
     ctx.fill();
 
@@ -567,7 +593,6 @@
     ctx.fillStyle = "#111823";
     ctx.fillText("РМ", x + w * 0.5, bodyY + bodyH * 0.52);
 
-    // лицо круг
     const faceR = Math.floor(w * 0.28);
     const fx = x + w * 0.5;
     const fy = y + h * 0.22;
@@ -606,11 +631,8 @@
     ctx.restore();
   }
 
-  // -------------------- Entities Render --------------------
   function drawEntities() {
-    for (const e of entities) {
-      if (e.drawFn) e.drawFn(ctx, e, world.t);
-    }
+    for (const e of entities) if (e.drawFn) e.drawFn(ctx, e, world.t);
   }
 
   function drawGameOverOverlay() {
@@ -633,7 +655,7 @@
     ctx.restore();
   }
 
-  // -------------------- Procedural Art --------------------
+  // --- Procedural items + hazards (same as before, sharp text) ---
   function roundRectLocal(ctx2, x, y, w, h, r) {
     const rr = Math.min(r, w / 2, h / 2);
     ctx2.beginPath();
@@ -645,7 +667,6 @@
     ctx2.closePath();
   }
 
-  // --- KFC bucket ---
   function drawBucket(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const wobble = Math.sin(t * 6 + x * 0.02) * (w * 0.02);
@@ -744,7 +765,6 @@
     }
   }
 
-  // --- Money ---
   function drawMoney(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const tilt = Math.sin(t * 7 + x * 0.03) * 0.06;
@@ -807,17 +827,12 @@
     ctx2.restore();
   }
 
-  // --- Hazards + telegraph glow ---
   function drawHazard(ctx2, e, t) {
     const isTelegraphing = e.telegraph && e.age < TELEGRAPH_TIME;
     if (e.kind === "spikes") return drawSpikes(ctx2, e);
-
     if (e.kind === "saw") return drawSaw(ctx2, e, t);
-
     if (e.kind === "bomb") return drawBomb(ctx2, e, t, isTelegraphing);
-
     if (e.kind === "bolt") return drawBolt(ctx2, e, t, isTelegraphing);
-
     return drawSpikes(ctx2, e);
   }
 
@@ -891,7 +906,6 @@
 
     ctx2.save();
 
-    // телеграф: мягкое свечение
     if (telegraphing) {
       const pulse = 0.35 + 0.35 * Math.sin(t * 18);
       ctx2.globalAlpha = pulse;
@@ -941,7 +955,6 @@
     ctx2.save();
     ctx2.translate(e.x, e.y);
 
-    // телеграф: более яркая рамка/свечение
     if (telegraphing) {
       const glow = 0.30 + 0.35 * Math.sin(t * 20);
       ctx2.globalAlpha = glow;
@@ -969,7 +982,7 @@
     ctx2.restore();
   }
 
-  // -------------------- Loop --------------------
+  // --- Loop ---
   function loop(ts) {
     if (!world.lastTs) world.lastTs = ts;
     const dt = Math.min(0.033, (ts - world.lastTs) / 1000);
@@ -977,7 +990,7 @@
 
     if (world.running) update(dt);
 
-    drawGymBackground();
+    drawPharmacyBackground();
     drawEntities();
     drawPlayer();
     if (world.gameOver) drawGameOverOverlay();
@@ -993,11 +1006,15 @@
       player.w = Math.max(70, Math.min(100, Math.floor(world.w * 0.18)));
       player.h = Math.floor(player.w * 1.30);
       player.x = clamp(player.x, 0, world.w - player.w);
+
+      const b = movementBounds();
+      player.y = clamp(player.y, b.yMin, b.yMax);
       player.targetX = clamp(player.targetX, 0, world.w - player.w);
+      player.targetY = clamp(player.targetY, b.yMin, b.yMax);
     }
   });
 
-  // -------------------- Start --------------------
+  // --- Start ---
   resizeCanvas();
   loadHighScore();
   syncHud();
