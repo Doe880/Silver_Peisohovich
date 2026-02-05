@@ -116,6 +116,7 @@
   };
 
   function movementBounds() {
+    // низ экрана + можно чуть вверх
     const bottomPad = Math.max(20, world.h * 0.05);
     const topLimit = Math.max(70, world.h * 0.42);
     const yMax = world.h - player.h - bottomPad;
@@ -359,6 +360,7 @@
     const baseSpeed = Math.max(430, world.w * 1.25);
     const keySpeed = baseSpeed * slowMul;
 
+    // keyboard nudges target
     if (input.left) player.targetX -= keySpeed * dt;
     if (input.right) player.targetX += keySpeed * dt;
     if (input.up) player.targetY -= keySpeed * dt * 0.65;
@@ -368,6 +370,7 @@
     player.targetX = clamp(player.targetX, 0, world.w - player.w);
     player.targetY = clamp(player.targetY, b.yMin, b.yMax);
 
+    // smooth to target
     const dx = player.targetX - player.x;
     const dy = player.targetY - player.y;
 
@@ -415,7 +418,7 @@
     }
   }
 
-  // -------------------- Background: Pharmacy --------------------
+  // -------------------- Background: Pharmacy (with posters + pharmacist + cashier) --------------------
   function drawPharmacyBackground() {
     ctx.fillStyle = "#0e1218";
     ctx.fillRect(0, 0, world.w, world.h);
@@ -454,12 +457,12 @@
     ctx.fillStyle = "#1fbf6a";
     ctx.fillText("АПТЕКА", signX + signW / 2, signY + signH / 2);
 
-    // posters
+    // posters (readable)
     drawPoster(world.w * 0.76, wallH * 0.10, 150, 86, "-15%", "#ff6b6b");
     drawPoster(world.w * 0.70, wallH * 0.24, 190, 86, "Витамины", "#f6d36b");
     drawPoster(world.w * 0.72, wallH * 0.38, 210, 86, "Антисептики", "#2b7cff");
 
-    // pharmacy cross left
+    // pharmacy cross (left)
     const crossX = world.w * 0.12;
     const crossY = wallH * 0.20;
     const crossS = Math.max(52, Math.min(96, world.w * 0.10));
@@ -525,6 +528,33 @@
       }
     }
 
+    // ticker
+    const tickerH = Math.max(26, wallH * 0.06);
+    const tickerY = wallH - tickerH - 6;
+
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "#1fbf6a";
+    roundRectAbs(world.w * 0.08, tickerY, world.w * 0.84, tickerH, 14);
+    ctx.fill();
+
+    ctx.save();
+    ctx.beginPath();
+    roundRectAbs(world.w * 0.08, tickerY, world.w * 0.84, tickerH, 14);
+    ctx.clip();
+
+    const text = "Скидки • Витамины • Антисептики • Консультация • ";
+    ctx.font = `800 ${Math.floor(tickerH * 0.55)}px system-ui`;
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+
+    const speed = 120;
+    const offset = (world.t * speed) % (world.w * 0.84);
+    ctx.fillText(text + text + text, world.w * 0.08 + 12 - offset, tickerY + tickerH / 2);
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
     // counter/desk
     const deskH = wallH * 0.18;
     const deskY = wallH - deskH;
@@ -542,35 +572,6 @@
 
     // cash register + terminal
     drawCashAndTerminal(world.w * 0.78, deskY + deskH * 0.18, deskH * 0.70);
-
-    // ticker (ПОСЛЕ стойки, чтобы не перекрывалось)
-    const tickerH = Math.max(30, wallH * 0.07);
-    const tickerY = Math.max(10, deskY - tickerH - 10);
-
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = "#1fbf6a";
-    roundRectAbs(world.w * 0.08, tickerY, world.w * 0.84, tickerH, 14);
-    ctx.fill();
-
-    ctx.save();
-    ctx.beginPath();
-    roundRectAbs(world.w * 0.08, tickerY, world.w * 0.84, tickerH, 14);
-    ctx.clip();
-
-    const text = "Скидки • Витамины • Антисептики • Консультация • ";
-    ctx.font = `900 ${Math.floor(tickerH * 0.58)}px system-ui`;
-    ctx.fillStyle = "rgba(255,255,255,0.98)";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-
-    const speed = 140;
-    const trackW = world.w * 0.84;
-    const offset = (world.t * speed) % trackW;
-
-    ctx.fillText(text + text + text, world.w * 0.08 + 14 - offset, tickerY + tickerH / 2);
-
-    ctx.restore();
-    ctx.globalAlpha = 1;
 
     // floor tiles
     ctx.fillStyle = "#dfe7ee";
@@ -605,8 +606,8 @@
   }
 
   function drawPoster(x, y, w, h, text, accent) {
-    const W = Math.max(120, Math.min(w, world.w * 0.36));
-    const H = Math.max(66, Math.min(h, world.h * 0.115));
+    const W = Math.max(110, Math.min(w, world.w * 0.35));
+    const H = Math.max(64, Math.min(h, world.h * 0.12));
     const X = clamp(x, 10, world.w - W - 10);
     const Y = clamp(y, 10, (world.h * 0.52) - H - 10);
 
@@ -615,36 +616,24 @@
     roundRectAbs(X, Y, W, H, 16);
     ctx.fill();
 
-    ctx.globalAlpha = 0.18;
+    ctx.globalAlpha = 0.20;
     ctx.fillStyle = accent;
     roundRectAbs(X - 6, Y - 6, W + 12, H + 12, 18);
     ctx.fill();
 
-    // header bar
     ctx.globalAlpha = 0.92;
     ctx.fillStyle = accent;
     roundRectAbs(X + 10, Y + 10, W - 20, H * 0.26, 12);
     ctx.fill();
 
-    // auto-fit text
     ctx.globalAlpha = 1;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    ctx.font = `900 ${Math.max(16, Math.floor(H * 0.36))}px system-ui`;
     ctx.fillStyle = "#1a2330";
-
-    const maxTextW = W - 22;
-    let fontSize = Math.max(14, Math.floor(H * 0.30));
-    ctx.font = `900 ${fontSize}px system-ui`;
-
-    while (ctx.measureText(text).width > maxTextW && fontSize > 12) {
-      fontSize -= 1;
-      ctx.font = `900 ${fontSize}px system-ui`;
-    }
-
     ctx.fillText(text, X + W / 2, Y + H * 0.64);
 
-    // tape corners
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.25;
     ctx.fillStyle = "#1a2330";
     ctx.fillRect(X + 8, Y + 8, 14, 6);
     ctx.fillRect(X + W - 22, Y + 8, 14, 6);
@@ -1047,7 +1036,7 @@
     ctx2.restore();
   }
 
-  // -------------------- Hazards --------------------
+  // -------------------- Hazards (spikes/saw/bomb + GOLD bolt) --------------------
   function drawHazard(ctx2, e, t) {
     const isTelegraphing = e.telegraph && e.age < TELEGRAPH_TIME;
     if (e.kind === "spikes") return drawSpikes(ctx2, e);
@@ -1139,7 +1128,7 @@
 
     ctx2.fillStyle = "#1b1f28";
     ctx2.beginPath();
-    ctx2.arc(cx, cy, cy, r, 0, Math.PI * 2);
+    ctx2.arc(cx, cy, r, 0, Math.PI * 2);
     ctx2.fill();
 
     ctx2.globalAlpha = 0.25;
@@ -1176,6 +1165,7 @@
     ctx2.save();
     ctx2.translate(e.x, e.y);
 
+    // telegraph (gold)
     if (telegraphing) {
       const glow = 0.30 + 0.35 * Math.sin(t * 20);
       ctx2.globalAlpha = glow;
@@ -1184,6 +1174,7 @@
       ctx2.globalAlpha = 1;
     }
 
+    // bolt body
     ctx2.globalAlpha = 0.95;
     ctx2.fillStyle = `rgba(246, 211, 107, ${pulse})`;
 
@@ -1197,11 +1188,13 @@
     ctx2.closePath();
     ctx2.fill();
 
+    // outline
     ctx2.globalAlpha = 0.80;
     ctx2.strokeStyle = "rgba(0,0,0,0.35)";
     ctx2.lineWidth = Math.max(2, e.w * 0.05);
     ctx2.stroke();
 
+    // highlight
     ctx2.globalAlpha = 0.16;
     ctx2.fillStyle = "#fff";
     ctx2.fillRect(e.w * 0.18, e.h * 0.12, e.w * 0.64, e.h * 0.20);
@@ -1209,7 +1202,7 @@
     ctx2.restore();
   }
 
-  // -------------------- Loop --------------------
+  // -------------------- Main loop --------------------
   function loop(ts) {
     if (!world.lastTs) world.lastTs = ts;
     const dt = Math.min(0.033, (ts - world.lastTs) / 1000);
