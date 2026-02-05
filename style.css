@@ -30,7 +30,8 @@ html, body {
 
 #hud {
   display: flex;
-  gap: 14px;
+  gap: 12px;
+  flex-wrap: wrap;
   font-size: 14px;
   opacity: 0.95;
 }

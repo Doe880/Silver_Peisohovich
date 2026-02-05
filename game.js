@@ -3,11 +3,14 @@
   const ctx = canvas.getContext("2d", { alpha: false });
 
   const scoreEl = document.getElementById("score");
+  const highScoreEl = document.getElementById("highscore");
   const livesEl = document.getElementById("lives");
   const comboEl = document.getElementById("combo");
   const restartBtn = document.getElementById("btn-restart");
 
   // -------------------- World / HiDPI --------------------
+  const STORAGE_KEY_HS = "silver_peisohovich_highscore";
+
   const world = {
     w: 0,
     h: 0,
@@ -17,6 +20,7 @@
     gameOver: false,
 
     score: 0,
+    highScore: 0,
     lives: 3,
     combo: 0,
 
@@ -72,8 +76,22 @@
 
   function syncHud() {
     scoreEl.textContent = String(world.score);
+    highScoreEl.textContent = String(world.highScore);
     livesEl.textContent = String(world.lives);
     comboEl.textContent = String(world.combo);
+  }
+
+  function loadHighScore() {
+    const raw = localStorage.getItem(STORAGE_KEY_HS);
+    const n = raw ? Number(raw) : 0;
+    world.highScore = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  }
+
+  function saveHighScoreIfNeeded() {
+    if (world.score > world.highScore) {
+      world.highScore = world.score;
+      localStorage.setItem(STORAGE_KEY_HS, String(world.highScore));
+    }
   }
 
   // -------------------- Player --------------------
@@ -81,11 +99,15 @@
     x: 0,
     y: 0,
     w: 72,
-    h: 84,
+    h: 96,
     targetX: 0,
     vx: 0,
     maxSpeed: 1400,
-    invuln: 0
+    invuln: 0,
+
+    // статус-эффекты
+    slowTimer: 0,     // сек
+    slowFactor: 0.55, // скорость * factor
   };
 
   // -------------------- Entities --------------------
@@ -150,8 +172,8 @@
     world.spawnTimer = 0;
     world.difficultyTimer = 0;
 
-    player.w = Math.max(62, Math.min(90, Math.floor(world.w * 0.16)));
-    player.h = Math.floor(player.w * 1.18);
+    player.w = Math.max(70, Math.min(100, Math.floor(world.w * 0.18)));
+    player.h = Math.floor(player.w * 1.30);
 
     player.x = (world.w - player.w) / 2;
     player.y = world.h - player.h - Math.max(28, Math.floor(world.h * 0.06));
@@ -159,21 +181,62 @@
     player.vx = 0;
     player.invuln = 0;
 
+    player.slowTimer = 0;
+
     syncHud();
     restartBtn.classList.add("hidden");
   }
 
   function endGame() {
+    saveHighScoreIfNeeded();
+    syncHud();
     world.gameOver = true;
     world.running = false;
     restartBtn.classList.remove("hidden");
   }
 
-  function hurtPlayer() {
-    if (player.invuln > 0) return;
-    world.lives -= 1;
+  // -------------------- Effects (пункт 3) --------------------
+  function applyHazardEffect(kind) {
+    // при ударе сбрасываем комбо (всегда)
     world.combo = 0;
+
+    if (kind === "bolt") {
+      // замедление
+      player.slowTimer = Math.max(player.slowTimer, 2.5);
+      // урон как обычный (1)
+      damagePlayer(1);
+      return;
+    }
+
+    if (kind === "bomb") {
+      // штраф по очкам
+      world.score = Math.max(0, world.score - 30);
+      // урон обычный (1)
+      damagePlayer(1);
+      saveHighScoreIfNeeded();
+      syncHud();
+      return;
+    }
+
+    if (kind === "saw") {
+      // двойной урон
+      damagePlayer(2);
+      return;
+    }
+
+    // spikes и прочее
+    damagePlayer(1);
+  }
+
+  function damagePlayer(amount) {
+    if (player.invuln > 0) {
+      syncHud();
+      return;
+    }
+
+    world.lives -= amount;
     player.invuln = 0.9;
+
     syncHud();
 
     if (world.lives <= 0) endGame();
@@ -195,14 +258,14 @@
     else if (r < hazardChance + moneyChance) type = TYPES.MONEY;
     else type = TYPES.BUCKET;
 
-    const base = Math.max(34, Math.min(62, Math.floor(world.w * 0.12)));
+    const base = Math.max(38, Math.min(70, Math.floor(world.w * 0.13)));
     const size = type === TYPES.BUCKET ? base : Math.floor(base * 0.92);
 
     const x = Math.random() * (world.w - size);
     const y = -size - 10;
     const vy = world.speed * (0.9 + Math.random() * 0.55);
 
-    let value = 0, damage = 0, kind = null, drawFn = null;
+    let value = 0, kind = null, drawFn = null;
 
     if (type === TYPES.BUCKET) {
       value = 20;
@@ -217,12 +280,11 @@
     }
 
     if (type === TYPES.HAZARD) {
-      damage = 1;
       kind = pickHazardKind();
       drawFn = (ctx, e, t) => drawHazard(ctx, e, t);
     }
 
-    entities.push({ type, x, y, w: size, h: size, vy, value, damage, kind, drawFn });
+    entities.push({ type, x, y, w: size, h: size, vy, value, kind, drawFn });
   }
 
   // -------------------- Update --------------------
@@ -232,45 +294,55 @@
 
     if (world.difficultyTimer >= 1.0) {
       world.difficultyTimer = 0;
-      world.speed = Math.min(720, world.speed + 8);
-      world.spawnBase = Math.max(0.38, world.spawnBase - 0.01);
+      world.speed = Math.min(780, world.speed + 9);
+      world.spawnBase = Math.max(0.35, world.spawnBase - 0.012);
     }
 
-    const keySpeed = Math.max(420, world.w * 1.2);
+    // статус замедления
+    player.slowTimer = Math.max(0, player.slowTimer - dt);
+    const slowMul = player.slowTimer > 0 ? player.slowFactor : 1.0;
+
+    // движение игрока
+    const baseSpeed = Math.max(430, world.w * 1.25);
+    const keySpeed = baseSpeed * slowMul;
+
     if (input.left) player.targetX -= keySpeed * dt;
     if (input.right) player.targetX += keySpeed * dt;
     player.targetX = clamp(player.targetX, 0, world.w - player.w);
 
     const dx = player.targetX - player.x;
     player.vx = clamp(dx * 18, -player.maxSpeed, player.maxSpeed);
-    player.x = clamp(player.x + player.vx * dt, 0, world.w - player.w);
+    player.x = clamp(player.x + player.vx * dt * slowMul, 0, world.w - player.w);
 
     player.y = world.h - player.h - Math.max(28, Math.floor(world.h * 0.06));
     player.invuln = Math.max(0, player.invuln - dt);
 
+    // спавн
     world.spawnTimer -= dt;
     if (world.spawnTimer <= 0) {
       spawnEntity();
       world.spawnTimer = world.spawnBase * (0.70 + Math.random() * 0.70);
     }
 
+    // entities
     for (let i = entities.length - 1; i >= 0; i--) {
       const e = entities[i];
       e.y += e.vy * dt;
 
       if (aabb(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)) {
         if (e.type === TYPES.HAZARD) {
-          hurtPlayer();
+          applyHazardEffect(e.kind);
         } else {
-          world.score += e.value + Math.min(25, world.combo * 2);
+          world.score += e.value + Math.min(30, world.combo * 2);
           world.combo += 1;
+          saveHighScoreIfNeeded();
           syncHud();
         }
         entities.splice(i, 1);
         continue;
       }
 
-      if (e.y > world.h + 120) {
+      if (e.y > world.h + 140) {
         if (e.type !== TYPES.HAZARD) {
           world.combo = 0;
           syncHud();
@@ -280,23 +352,104 @@
     }
   }
 
-  // -------------------- Render --------------------
-  function drawBackground() {
+  // -------------------- Background: спортзал --------------------
+  function drawGymBackground() {
+    // базовый градиент зала
     ctx.fillStyle = "#0b0f14";
     ctx.fillRect(0, 0, world.w, world.h);
 
-    const count = 60;
-    for (let i = 0; i < count; i++) {
-      const x = (i * 97) % world.w;
-      const y = ((i * 173) + (world.t * 30)) % world.h;
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = "#dfe8ff";
-      ctx.fillRect(x, y, 2, 2);
+    // верхняя стена
+    const wallH = world.h * 0.46;
+    const floorY = wallH;
+
+    // стена
+    ctx.fillStyle = "#1a2330";
+    ctx.fillRect(0, 0, world.w, wallH);
+
+    // окна
+    const winCount = Math.max(3, Math.floor(world.w / 140));
+    const winW = world.w / winCount * 0.70;
+    const winH = wallH * 0.30;
+    const winY = wallH * 0.10;
+
+    for (let i = 0; i < winCount; i++) {
+      const slotW = world.w / winCount;
+      const wx = i * slotW + (slotW - winW) / 2;
+
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#0f1622";
+      roundRectAbs(wx, winY, winW, winH, 14);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = "#9cc9ff";
+      roundRectAbs(wx + 6, winY + 6, winW - 12, winH - 12, 12);
+      ctx.fill();
+
+      // переплёты
+      ctx.globalAlpha = 0.30;
+      ctx.strokeStyle = "#0b0f14";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(wx + winW / 2, winY + 6);
+      ctx.lineTo(wx + winW / 2, winY + winH - 6);
+      ctx.stroke();
+
+      ctx.globalAlpha = 1;
+    }
+
+    // баскетбольное кольцо (стилизованно) справа
+    const hoopX = world.w * 0.82;
+    const hoopY = wallH * 0.58;
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "#0f1622";
+    roundRectAbs(hoopX - 70, hoopY - 55, 140, 90, 16);
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#e9eef5";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(hoopX - 38, hoopY - 35, 76, 55);
+
+    ctx.strokeStyle = "#ff6b3d";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(hoopX, hoopY + 20, 22, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // пол
+    ctx.fillStyle = "#1a1410";
+    ctx.fillRect(0, floorY, world.w, world.h - floorY);
+
+    // “паркетные” полосы (скролл вниз)
+    const plankH = Math.max(22, Math.floor(world.h * 0.045));
+    const scroll = (world.t * 140) % plankH;
+    for (let y = floorY - plankH; y < world.h + plankH; y += plankH) {
+      const yy = y + scroll;
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = "#3a2a1f";
+      ctx.fillRect(0, yy, world.w, 2);
     }
     ctx.globalAlpha = 1;
+
+    // разметка площадки
+    ctx.strokeStyle = "rgba(230, 230, 230, 0.35)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    // центральная линия
+    ctx.moveTo(0, floorY + (world.h - floorY) * 0.25);
+    ctx.lineTo(world.w, floorY + (world.h - floorY) * 0.25);
+
+    // круг
+    const cx = world.w * 0.5;
+    const cy = floorY + (world.h - floorY) * 0.55;
+    const r = Math.min(world.w, world.h) * 0.14;
+    ctx.moveTo(cx + r, cy);
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
   }
 
-  function roundRectPath(x, y, w, h, r) {
+  function roundRectAbs(x, y, w, h, r) {
     const rr = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
     ctx.moveTo(x + rr, y);
@@ -307,43 +460,93 @@
     ctx.closePath();
   }
 
+  // -------------------- Player Render: круглое лицо + белая футболка "РМ" --------------------
   function drawPlayer() {
-    const bodyX = player.x;
-    const bodyY = player.y;
+    const x = player.x;
+    const y = player.y;
     const w = player.w;
     const h = player.h;
 
     const flashing = player.invuln > 0 && Math.floor(world.t * 14) % 2 === 0;
+    const slowed = player.slowTimer > 0;
 
     ctx.save();
-    ctx.globalAlpha = flashing ? 0.45 : 1;
+    ctx.globalAlpha = flashing ? 0.50 : 1;
 
-    ctx.fillStyle = "#1f2a3a";
-    roundRectPath(bodyX, bodyY, w, h, Math.min(18, Math.floor(w * 0.25)));
+    // тело (футболка)
+    const bodyX = x + w * 0.18;
+    const bodyY = y + h * 0.35;
+    const bodyW = w * 0.64;
+    const bodyH = h * 0.56;
+
+    // тень
+    ctx.globalAlpha *= 0.95;
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    roundRectAbs(bodyX + 3, bodyY + 6, bodyW, bodyH, 18);
     ctx.fill();
 
-    const facePad = Math.floor(w * 0.12);
-    const faceSize = Math.floor(w - facePad * 2);
-    const fx = bodyX + facePad;
-    const fy = bodyY + facePad;
+    // белая футболка
+    ctx.globalAlpha = flashing ? 0.55 : 1;
+    ctx.fillStyle = "#f6f7fb";
+    roundRectAbs(bodyX, bodyY, bodyW, bodyH, 18);
+    ctx.fill();
 
-    ctx.globalAlpha = 1;
+    // ворот
+    ctx.fillStyle = "#d9dbe6";
+    roundRectAbs(bodyX + bodyW * 0.30, bodyY + bodyH * 0.05, bodyW * 0.40, bodyH * 0.12, 12);
+    ctx.fill();
+
+    // надпись "РМ"
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const shirtFont = Math.max(16, Math.floor(w * 0.26));
+    ctx.font = `900 ${shirtFont}px system-ui`;
+    // обводка, чтобы читаемо было всегда
+    ctx.lineWidth = Math.max(3, Math.floor(w * 0.06));
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
+    ctx.strokeText("РМ", x + w * 0.5, bodyY + bodyH * 0.52);
+    ctx.fillStyle = "#111823";
+    ctx.fillText("РМ", x + w * 0.5, bodyY + bodyH * 0.52);
+
+    // лицо (круг с фото)
+    const faceR = Math.floor(w * 0.28);
+    const fx = x + w * 0.5;
+    const fy = y + h * 0.22;
+
+    // рамка лица
+    ctx.globalAlpha = flashing ? 0.55 : 1;
     ctx.fillStyle = "#0b0f14";
-    roundRectPath(fx - 3, fy - 3, faceSize + 6, faceSize + 6, 14);
+    ctx.beginPath();
+    ctx.arc(fx, fy, faceR + 4, 0, Math.PI * 2);
     ctx.fill();
 
+    // фото в круге
     ctx.save();
-    roundRectPath(fx, fy, faceSize, faceSize, 12);
+    ctx.beginPath();
+    ctx.arc(fx, fy, faceR, 0, Math.PI * 2);
     ctx.clip();
-    ctx.drawImage(IMG.face, fx, fy, faceSize, faceSize);
+    ctx.drawImage(IMG.face, fx - faceR, fy - faceR, faceR * 2, faceR * 2);
     ctx.restore();
 
+    // если замедлен — лёгкий голубой “аурный” ободок
+    if (slowed && !flashing) {
+      const pulse = 0.35 + 0.25 * Math.sin(world.t * 12);
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = "rgba(160, 220, 255, 1)";
+      ctx.lineWidth = Math.max(3, Math.floor(w * 0.05));
+      ctx.beginPath();
+      ctx.arc(fx, fy, faceR + 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // ноги (анимация)
+    ctx.globalAlpha = flashing ? 0.55 : 1;
     ctx.fillStyle = "#111823";
-    const legW = Math.floor(w * 0.18);
-    const legH = Math.floor(h * 0.18);
-    const step = Math.sin(world.t * 14) * 6;
-    ctx.fillRect(bodyX + Math.floor(w * 0.28), bodyY + h - legH, legW, legH + step);
-    ctx.fillRect(bodyX + Math.floor(w * 0.58), bodyY + h - legH, legW, legH - step);
+    const legW = Math.floor(w * 0.16);
+    const legH = Math.floor(h * 0.16);
+    const step = Math.sin(world.t * 14) * 6 * (slowed ? 0.6 : 1);
+    ctx.fillRect(x + Math.floor(w * 0.30), y + h - legH, legW, legH + step);
+    ctx.fillRect(x + Math.floor(w * 0.58), y + h - legH, legW, legH - step);
 
     ctx.restore();
   }
@@ -356,7 +559,7 @@
 
   function drawGameOverOverlay() {
     ctx.save();
-    ctx.globalAlpha = 0.6;
+    ctx.globalAlpha = 0.62;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, world.w, world.h);
     ctx.globalAlpha = 1;
@@ -366,339 +569,342 @@
     ctx.font = "800 34px system-ui";
     ctx.fillText("GAME OVER", world.w / 2, world.h * 0.45);
 
-    ctx.font = "500 16px system-ui";
-    ctx.globalAlpha = 0.85;
-    ctx.fillText(`Счёт: ${world.score}`, world.w / 2, world.h * 0.45 + 34);
+    ctx.font = "600 16px system-ui";
+    ctx.globalAlpha = 0.90;
+    ctx.fillText(`Счёт: ${world.score}   •   Рекорд: ${world.highScore}`, world.w / 2, world.h * 0.45 + 34);
     ctx.fillText("Нажми Enter или «Заново»", world.w / 2, world.h * 0.45 + 60);
 
     ctx.restore();
   }
 
-  // -------------------- Procedural Art (bucket, money, hazards) --------------------
-  function drawHazard(ctx, e, t) {
-    switch (e.kind) {
-      case "spikes": return drawSpikes(ctx, e);
-      case "saw":    return drawSaw(ctx, e, t);
-      case "bomb":   return drawBomb(ctx, e, t);
-      case "bolt":   return drawBolt(ctx, e, t);
-      default:       return drawSpikes(ctx, e);
-    }
+  // -------------------- Procedural Art (четкие bucket/money + hazards) --------------------
+  function roundRectLocal(ctx2, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx2.beginPath();
+    ctx2.moveTo(x + rr, y);
+    ctx2.arcTo(x + w, y, x + w, y + h, rr);
+    ctx2.arcTo(x + w, y + h, x, y + h, rr);
+    ctx2.arcTo(x, y + h, x, y, rr);
+    ctx2.arcTo(x, y, x + w, y, rr);
+    ctx2.closePath();
   }
 
-  // --- KFC bucket with wings + "kfc" text (процедурно, без брендинговых логотипов) ---
-  // Важное: я рисую ведро с надписью "kfc" как текст, не копируя фирменный логотип/шрифт.
-  function drawBucket(ctx, e, t) {
+  // Ведро с крылышками + "KFC" (текст жирный+обводка для читаемости)
+  function drawBucket(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
-    const wobble = Math.sin(t * 6 + x * 0.02) * (w * 0.03);
+    const wobble = Math.sin(t * 6 + x * 0.02) * (w * 0.02);
 
-    ctx.save();
-    ctx.translate(x + w / 2, y + h / 2);
-    ctx.rotate(wobble * 0.02);
-    ctx.translate(-w / 2, -h / 2);
+    ctx2.save();
+    ctx2.translate(x + w / 2, y + h / 2);
+    ctx2.rotate(wobble * 0.02);
+    ctx2.translate(-w / 2, -h / 2);
 
     // тень
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = "#000";
-    roundRectLocal(ctx, w * 0.12, h * 0.10, w * 0.76, h * 0.82, Math.max(10, w * 0.18));
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx2.globalAlpha = 0.22;
+    ctx2.fillStyle = "#000";
+    roundRectLocal(ctx2, w * 0.12, h * 0.12, w * 0.76, h * 0.80, Math.max(10, w * 0.18));
+    ctx2.fill();
+    ctx2.globalAlpha = 1;
 
-    // ведро (красно-белые полосы)
-    const bucketX = w * 0.16, bucketY = h * 0.18, bucketW = w * 0.68, bucketH = h * 0.72;
-    roundRectLocal(ctx, bucketX, bucketY, bucketW, bucketH, Math.max(12, w * 0.18));
-    ctx.save();
-    ctx.clip();
+    // крылышки сверху (чуть больше и контрастнее)
+    drawWingsPile(ctx2, w, h);
 
-    // фон ведра
-    ctx.fillStyle = "#f6f7fb";
-    ctx.fillRect(bucketX, bucketY, bucketW, bucketH);
+    // ведро
+    const bucketX = w * 0.14, bucketY = h * 0.22, bucketW = w * 0.72, bucketH = h * 0.70;
 
-    // красные полосы
+    roundRectLocal(ctx2, bucketX, bucketY, bucketW, bucketH, Math.max(12, w * 0.18));
+    ctx2.save();
+    ctx2.clip();
+
+    // белая база
+    ctx2.fillStyle = "#fbfbff";
+    ctx2.fillRect(bucketX, bucketY, bucketW, bucketH);
+
+    // красные полосы (контрастнее)
     const stripes = 4;
     for (let i = 0; i < stripes; i++) {
-      ctx.fillStyle = i % 2 === 0 ? "#d0322f" : "#f6f7fb";
+      ctx2.fillStyle = i % 2 === 0 ? "#cf1f22" : "#fbfbff";
       const sx = bucketX + (i * bucketW) / stripes;
-      ctx.fillRect(sx, bucketY, bucketW / stripes, bucketH);
+      ctx2.fillRect(sx, bucketY, bucketW / stripes, bucketH);
     }
 
     // верхняя кромка
-    ctx.fillStyle = "#e9eaf1";
-    ctx.fillRect(bucketX, bucketY, bucketW, bucketH * 0.12);
+    ctx2.fillStyle = "#e8e9f2";
+    ctx2.fillRect(bucketX, bucketY, bucketW, bucketH * 0.14);
 
-    ctx.restore();
+    ctx2.restore();
 
     // обводка ведра
-    ctx.strokeStyle = "rgba(0,0,0,0.35)";
-    ctx.lineWidth = Math.max(2, w * 0.04);
-    roundRectLocal(ctx, bucketX, bucketY, bucketW, bucketH, Math.max(12, w * 0.18));
-    ctx.stroke();
+    ctx2.strokeStyle = "rgba(0,0,0,0.45)";
+    ctx2.lineWidth = Math.max(2, w * 0.045);
+    roundRectLocal(ctx2, bucketX, bucketY, bucketW, bucketH, Math.max(12, w * 0.18));
+    ctx2.stroke();
 
-    // надпись "kfc"
-    ctx.fillStyle = "#111823";
-    ctx.font = `800 ${Math.floor(w * 0.22)}px system-ui`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("kfc", w * 0.50, h * 0.62);
+    // надпись "KFC" — крупно, жирно, с обводкой
+    const fontSize = Math.max(14, Math.floor(w * 0.28));
+    ctx2.font = `900 ${fontSize}px system-ui`;
+    ctx2.textAlign = "center";
+    ctx2.textBaseline = "middle";
 
-    // крылышки сверху (кучка)
-    drawWingsPile(ctx, w, h);
+    const tx = w * 0.50;
+    const ty = h * 0.62;
 
-    ctx.restore();
+    ctx2.lineWidth = Math.max(3, Math.floor(w * 0.06));
+    ctx2.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx2.strokeText("KFC", tx, ty);
+    ctx2.fillStyle = "#111823";
+    ctx2.fillText("KFC", tx, ty);
+
+    ctx2.restore();
   }
 
-  function drawWingsPile(ctx, w, h) {
-    // стилизованные крылышки: овалы/капли тёплого цвета
-    const topAreaY = h * 0.06;
+  function drawWingsPile(ctx2, w, h) {
+    const topY = h * 0.12;
     const centerX = w * 0.5;
+    const count = 6;
 
-    const count = 5;
     for (let i = 0; i < count; i++) {
-      const px = centerX + (i - 2) * (w * 0.11);
-      const py = topAreaY + (i % 2) * (h * 0.06);
-      const rw = w * 0.18;
-      const rh = h * 0.12;
+      const px = centerX + (i - (count - 1) / 2) * (w * 0.10);
+      const py = topY + (i % 2) * (h * 0.05);
+      const rw = w * 0.20;
+      const rh = h * 0.13;
 
-      // “жареная” текстура простая
-      ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate((i - 2) * 0.08);
+      ctx2.save();
+      ctx2.translate(px, py);
+      ctx2.rotate((i - 2.5) * 0.08);
 
-      ctx.fillStyle = "#c7772b";
-      ctx.beginPath();
-      ctx.ellipse(0, 0, rw * 0.55, rh * 0.55, 0, 0, Math.PI * 2);
-      ctx.fill();
+      // основа
+      ctx2.fillStyle = "#c7772b";
+      ctx2.beginPath();
+      ctx2.ellipse(0, 0, rw * 0.55, rh * 0.55, 0, 0, Math.PI * 2);
+      ctx2.fill();
 
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = "#8b4a16";
-      ctx.beginPath();
-      ctx.ellipse(-rw * 0.10, -rh * 0.05, rw * 0.28, rh * 0.22, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      // “корочка”
+      ctx2.globalAlpha = 0.45;
+      ctx2.fillStyle = "#7f3f10";
+      ctx2.beginPath();
+      ctx2.ellipse(-rw * 0.08, -rh * 0.05, rw * 0.30, rh * 0.22, 0, 0, Math.PI * 2);
+      ctx2.fill();
+      ctx2.globalAlpha = 1;
 
       // блик
-      ctx.globalAlpha = 0.18;
-      ctx.fillStyle = "#fff";
-      ctx.beginPath();
-      ctx.ellipse(rw * 0.10, -rh * 0.10, rw * 0.22, rh * 0.18, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx2.globalAlpha = 0.16;
+      ctx2.fillStyle = "#fff";
+      ctx2.beginPath();
+      ctx2.ellipse(rw * 0.10, -rh * 0.10, rw * 0.22, rh * 0.18, 0, 0, Math.PI * 2);
+      ctx2.fill();
+      ctx2.globalAlpha = 1;
 
-      ctx.restore();
+      ctx2.restore();
     }
   }
 
-  // --- Green dollar bill with "$" (процедурно) ---
-  function drawMoney(ctx, e, t) {
+  // Купюра с большим "$" (четко: жирный + stroke)
+  function drawMoney(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const tilt = Math.sin(t * 7 + x * 0.03) * 0.06;
 
-    ctx.save();
-    ctx.translate(x + w / 2, y + h / 2);
-    ctx.rotate(tilt);
-    ctx.translate(-w / 2, -h / 2);
+    ctx2.save();
+    ctx2.translate(x + w / 2, y + h / 2);
+    ctx2.rotate(tilt);
+    ctx2.translate(-w / 2, -h / 2);
 
     // тень
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = "#000";
-    roundRectLocal(ctx, w * 0.08, h * 0.20, w * 0.84, h * 0.60, Math.max(10, w * 0.12));
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx2.globalAlpha = 0.22;
+    ctx2.fillStyle = "#000";
+    roundRectLocal(ctx2, w * 0.07, h * 0.22, w * 0.86, h * 0.58, Math.max(10, w * 0.12));
+    ctx2.fill();
+    ctx2.globalAlpha = 1;
 
-    const billX = w * 0.06, billY = h * 0.22, billW = w * 0.88, billH = h * 0.56;
+    const bx = w * 0.06, by = h * 0.23, bw = w * 0.88, bh = h * 0.56;
 
     // купюра
-    ctx.fillStyle = "#39b36a";
-    roundRectLocal(ctx, billX, billY, billW, billH, Math.max(10, w * 0.12));
-    ctx.fill();
+    ctx2.fillStyle = "#2fbe69";
+    roundRectLocal(ctx2, bx, by, bw, bh, Math.max(10, w * 0.12));
+    ctx2.fill();
 
-    // рамка
-    ctx.strokeStyle = "rgba(0,0,0,0.35)";
-    ctx.lineWidth = Math.max(2, w * 0.035);
-    roundRectLocal(ctx, billX, billY, billW, billH, Math.max(10, w * 0.12));
-    ctx.stroke();
+    // рамка (контраст)
+    ctx2.strokeStyle = "rgba(0,0,0,0.50)";
+    ctx2.lineWidth = Math.max(2, w * 0.04);
+    roundRectLocal(ctx2, bx, by, bw, bh, Math.max(10, w * 0.12));
+    ctx2.stroke();
 
-    // внутренние линии “орнамент”
-    ctx.globalAlpha = 0.35;
-    ctx.strokeStyle = "#0b5a2f";
-    ctx.lineWidth = Math.max(1, w * 0.015);
-    ctx.beginPath();
+    // внутренний “орнамент” — линии
+    ctx2.globalAlpha = 0.35;
+    ctx2.strokeStyle = "#0a5a2f";
+    ctx2.lineWidth = Math.max(1, w * 0.016);
+    ctx2.beginPath();
     for (let i = 1; i <= 4; i++) {
-      const yy = billY + (i * billH) / 5;
-      ctx.moveTo(billX + billW * 0.10, yy);
-      ctx.lineTo(billX + billW * 0.90, yy);
+      const yy = by + (i * bh) / 5;
+      ctx2.moveTo(bx + bw * 0.10, yy);
+      ctx2.lineTo(bx + bw * 0.90, yy);
     }
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+    ctx2.stroke();
+    ctx2.globalAlpha = 1;
 
-    // круги по углам
-    ctx.fillStyle = "rgba(11,90,47,0.35)";
-    const r = Math.min(billW, billH) * 0.12;
-    drawCircle(ctx, billX + billW * 0.16, billY + billH * 0.30, r);
-    drawCircle(ctx, billX + billW * 0.84, billY + billH * 0.30, r);
-    drawCircle(ctx, billX + billW * 0.16, billY + billH * 0.70, r);
-    drawCircle(ctx, billX + billW * 0.84, billY + billH * 0.70, r);
+    // большой "$" — максимально читаемо
+    const fontSize = Math.max(16, Math.floor(w * 0.40));
+    ctx2.font = `900 ${fontSize}px system-ui`;
+    ctx2.textAlign = "center";
+    ctx2.textBaseline = "middle";
 
-    // большой "$" по центру
-    ctx.fillStyle = "#083a1f";
-    ctx.font = `900 ${Math.floor(w * 0.34)}px system-ui`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("$", w * 0.50, h * 0.50);
+    const tx = w * 0.50;
+    const ty = h * 0.51;
 
-    // небольшой блик
-    ctx.globalAlpha = 0.12;
-    ctx.fillStyle = "#fff";
-    roundRectLocal(ctx, billX + billW * 0.08, billY + billH * 0.12, billW * 0.45, billH * 0.22, 10);
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx2.lineWidth = Math.max(3, Math.floor(w * 0.07));
+    ctx2.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx2.strokeText("$", tx, ty);
 
-    ctx.restore();
+    ctx2.fillStyle = "#063a1f";
+    ctx2.fillText("$", tx, ty);
+
+    // блик
+    ctx2.globalAlpha = 0.12;
+    ctx2.fillStyle = "#fff";
+    roundRectLocal(ctx2, bx + bw * 0.08, by + bh * 0.10, bw * 0.46, bh * 0.22, 10);
+    ctx2.fill();
+    ctx2.globalAlpha = 1;
+
+    ctx2.restore();
   }
 
-  function drawCircle(ctx, x, y, r) {
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
+  // Hazards
+  function drawHazard(ctx2, e, t) {
+    switch (e.kind) {
+      case "spikes": return drawSpikes(ctx2, e);
+      case "saw":    return drawSaw(ctx2, e, t);
+      case "bomb":   return drawBomb(ctx2, e, t);
+      case "bolt":   return drawBolt(ctx2, e, t);
+      default:       return drawSpikes(ctx2, e);
+    }
   }
 
-  // --- Hazards ---
-  function roundRectLocal(ctx, x, y, w, h, r) {
-    const rr = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + rr, y);
-    ctx.arcTo(x + w, y, x + w, y + h, rr);
-    ctx.arcTo(x + w, y + h, x, y + h, rr);
-    ctx.arcTo(x, y + h, x, y, rr);
-    ctx.arcTo(x, y, x + w, y, rr);
-    ctx.closePath();
-  }
+  function drawSpikes(ctx2, e) {
+    ctx2.save();
+    ctx2.translate(e.x, e.y);
 
-  function drawSpikes(ctx, e) {
-    ctx.save();
-    ctx.translate(e.x, e.y);
-
-    ctx.fillStyle = "#2a2f3a";
-    roundRectLocal(ctx, 0, e.h * 0.55, e.w, e.h * 0.45, 10);
-    ctx.fill();
+    ctx2.fillStyle = "#2a2f3a";
+    roundRectLocal(ctx2, 0, e.h * 0.55, e.w, e.h * 0.45, 10);
+    ctx2.fill();
 
     const n = 5;
     const top = e.h * 0.55;
-    ctx.fillStyle = "#cfd6e6";
-    ctx.beginPath();
+    ctx2.fillStyle = "#cfd6e6";
+    ctx2.beginPath();
     for (let i = 0; i < n; i++) {
       const x0 = (i * e.w) / n;
       const x1 = ((i + 1) * e.w) / n;
       const mid = (x0 + x1) / 2;
-      ctx.moveTo(x0, top);
-      ctx.lineTo(mid, 0);
-      ctx.lineTo(x1, top);
+      ctx2.moveTo(x0, top);
+      ctx2.lineTo(mid, 0);
+      ctx2.lineTo(x1, top);
     }
-    ctx.closePath();
-    ctx.fill();
+    ctx2.closePath();
+    ctx2.fill();
 
-    ctx.restore();
+    ctx2.restore();
   }
 
-  function drawSaw(ctx, e, t) {
+  function drawSaw(ctx2, e, t) {
     const cx = e.x + e.w / 2;
     const cy = e.y + e.h / 2;
     const r = Math.min(e.w, e.h) * 0.45;
     const teeth = 12;
     const angle = t * 8;
 
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angle);
+    ctx2.save();
+    ctx2.translate(cx, cy);
+    ctx2.rotate(angle);
 
-    ctx.fillStyle = "#d7deef";
-    ctx.beginPath();
+    ctx2.fillStyle = "#d7deef";
+    ctx2.beginPath();
     for (let i = 0; i < teeth; i++) {
       const a0 = (i * Math.PI * 2) / teeth;
       const a1 = ((i + 0.5) * Math.PI * 2) / teeth;
       const a2 = ((i + 1) * Math.PI * 2) / teeth;
-      ctx.lineTo(Math.cos(a0) * r, Math.sin(a0) * r);
-      ctx.lineTo(Math.cos(a1) * (r * 1.15), Math.sin(a1) * (r * 1.15));
-      ctx.lineTo(Math.cos(a2) * r, Math.sin(a2) * r);
+      ctx2.lineTo(Math.cos(a0) * r, Math.sin(a0) * r);
+      ctx2.lineTo(Math.cos(a1) * (r * 1.15), Math.sin(a1) * (r * 1.15));
+      ctx2.lineTo(Math.cos(a2) * r, Math.sin(a2) * r);
     }
-    ctx.closePath();
-    ctx.fill();
+    ctx2.closePath();
+    ctx2.fill();
 
-    ctx.fillStyle = "#8b93a8";
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.72, 0, Math.PI * 2);
-    ctx.fill();
+    ctx2.fillStyle = "#8b93a8";
+    ctx2.beginPath();
+    ctx2.arc(0, 0, r * 0.72, 0, Math.PI * 2);
+    ctx2.fill();
 
-    ctx.fillStyle = "#0b0f14";
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.18, 0, Math.PI * 2);
-    ctx.fill();
+    ctx2.fillStyle = "#0b0f14";
+    ctx2.beginPath();
+    ctx2.arc(0, 0, r * 0.18, 0, Math.PI * 2);
+    ctx2.fill();
 
-    ctx.restore();
+    ctx2.restore();
   }
 
-  function drawBomb(ctx, e, t) {
+  function drawBomb(ctx2, e, t) {
     const cx = e.x + e.w / 2;
     const cy = e.y + e.h / 2;
     const r = Math.min(e.w, e.h) * 0.42;
 
-    ctx.save();
+    ctx2.save();
 
-    ctx.fillStyle = "#1b1f28";
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
+    ctx2.fillStyle = "#1b1f28";
+    ctx2.beginPath();
+    ctx2.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx2.fill();
 
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(cx - r * 0.25, cy - r * 0.25, r * 0.35, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx2.globalAlpha = 0.25;
+    ctx2.fillStyle = "#ffffff";
+    ctx2.beginPath();
+    ctx2.arc(cx - r * 0.25, cy - r * 0.25, r * 0.35, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.globalAlpha = 1;
 
-    ctx.fillStyle = "#3a4152";
-    roundRectLocal(ctx, cx - r * 0.35, cy - r * 0.95, r * 0.7, r * 0.3, 6);
-    ctx.fill();
+    ctx2.fillStyle = "#3a4152";
+    roundRectLocal(ctx2, cx - r * 0.35, cy - r * 0.95, r * 0.7, r * 0.3, 6);
+    ctx2.fill();
 
-    ctx.strokeStyle = "#caa24a";
-    ctx.lineWidth = Math.max(3, r * 0.12);
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - r * 0.95);
-    ctx.quadraticCurveTo(cx + r * 0.7, cy - r * 1.2, cx + r * 0.9, cy - r * 0.65);
-    ctx.stroke();
+    ctx2.strokeStyle = "#caa24a";
+    ctx2.lineWidth = Math.max(3, r * 0.12);
+    ctx2.lineCap = "round";
+    ctx2.beginPath();
+    ctx2.moveTo(cx, cy - r * 0.95);
+    ctx2.quadraticCurveTo(cx + r * 0.7, cy - r * 1.2, cx + r * 0.9, cy - r * 0.65);
+    ctx2.stroke();
 
     const spark = 0.6 + 0.4 * Math.sin(t * 16);
-    ctx.fillStyle = `rgba(255, 200, 60, ${0.9 * spark})`;
-    ctx.beginPath();
-    ctx.arc(cx + r * 0.9, cy - r * 0.65, r * 0.18 * spark, 0, Math.PI * 2);
-    ctx.fill();
+    ctx2.fillStyle = `rgba(255, 200, 60, ${0.9 * spark})`;
+    ctx2.beginPath();
+    ctx2.arc(cx + r * 0.9, cy - r * 0.65, r * 0.18 * spark, 0, Math.PI * 2);
+    ctx2.fill();
 
-    ctx.restore();
+    ctx2.restore();
   }
 
-  function drawBolt(ctx, e, t) {
+  function drawBolt(ctx2, e, t) {
     const pulse = 0.75 + 0.25 * Math.sin(t * 10);
 
-    ctx.save();
-    ctx.translate(e.x, e.y);
+    ctx2.save();
+    ctx2.translate(e.x, e.y);
 
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = `rgba(160, 220, 255, ${pulse})`;
+    ctx2.globalAlpha = 0.9;
+    ctx2.fillStyle = `rgba(160, 220, 255, ${pulse})`;
 
-    ctx.beginPath();
-    ctx.moveTo(e.w * 0.55, 0);
-    ctx.lineTo(e.w * 0.25, e.h * 0.55);
-    ctx.lineTo(e.w * 0.52, e.h * 0.55);
-    ctx.lineTo(e.w * 0.35, e.h);
-    ctx.lineTo(e.w * 0.78, e.h * 0.42);
-    ctx.lineTo(e.w * 0.52, e.h * 0.42);
-    ctx.closePath();
-    ctx.fill();
+    ctx2.beginPath();
+    ctx2.moveTo(e.w * 0.55, 0);
+    ctx2.lineTo(e.w * 0.25, e.h * 0.55);
+    ctx2.lineTo(e.w * 0.52, e.h * 0.55);
+    ctx2.lineTo(e.w * 0.35, e.h);
+    ctx2.lineTo(e.w * 0.78, e.h * 0.42);
+    ctx2.lineTo(e.w * 0.52, e.h * 0.42);
+    ctx2.closePath();
+    ctx2.fill();
 
-    ctx.globalAlpha = 0.20;
-    ctx.fillRect(e.w * 0.15, e.h * 0.1, e.w * 0.7, e.h * 0.8);
+    ctx2.globalAlpha = 0.20;
+    ctx2.fillRect(e.w * 0.15, e.h * 0.1, e.w * 0.7, e.h * 0.8);
 
-    ctx.restore();
+    ctx2.restore();
   }
 
   // -------------------- Loop --------------------
@@ -709,7 +915,7 @@
 
     if (world.running) update(dt);
 
-    drawBackground();
+    drawGymBackground();
     drawEntities();
     drawPlayer();
     if (world.gameOver) drawGameOverOverlay();
@@ -723,8 +929,8 @@
   window.addEventListener("resize", () => {
     resizeCanvas();
     if (!world.gameOver) {
-      player.w = Math.max(62, Math.min(90, Math.floor(world.w * 0.16)));
-      player.h = Math.floor(player.w * 1.18);
+      player.w = Math.max(70, Math.min(100, Math.floor(world.w * 0.18)));
+      player.h = Math.floor(player.w * 1.30);
       player.x = clamp(player.x, 0, world.w - player.w);
       player.targetX = clamp(player.targetX, 0, world.w - player.w);
     }
@@ -732,6 +938,8 @@
 
   // -------------------- Start --------------------
   resizeCanvas();
+  loadHighScore();
+  syncHud();
 
   loadImages(assets)
     .then(() => {
