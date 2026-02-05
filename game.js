@@ -93,7 +93,7 @@
     } catch (_) {}
   }
 
-  // --- Player: now can move a bit up ---
+  // --- Player ---
   const player = {
     x: 0, y: 0,
     w: 72, h: 96,
@@ -112,9 +112,8 @@
   };
 
   function movementBounds() {
-    // зона движения: низ экрана, но можно чуть вверх
     const bottomPad = Math.max(20, world.h * 0.05);
-    const topLimit = Math.max(70, world.h * 0.42); // "немного вверх"
+    const topLimit = Math.max(70, world.h * 0.42); // немного вверх
     const yMax = world.h - player.h - bottomPad;
     const yMin = yMax - topLimit;
     return { yMin, yMax };
@@ -135,7 +134,7 @@
   const entities = [];
   const TYPES = { BUCKET: "bucket", MONEY: "money", HAZARD: "hazard" };
 
-  // --- Input (touch drag + keyboard) ---
+  // --- Input ---
   const input = { left: false, right: false, up: false, down: false, dragging: false };
 
   function setTargetFromClientXY(clientX, clientY) {
@@ -356,7 +355,6 @@
     const baseSpeed = Math.max(430, world.w * 1.25);
     const keySpeed = baseSpeed * slowMul;
 
-    // keyboard nudges target
     if (input.left) player.targetX -= keySpeed * dt;
     if (input.right) player.targetX += keySpeed * dt;
     if (input.up) player.targetY -= keySpeed * dt * 0.65;
@@ -366,7 +364,6 @@
     player.targetX = clamp(player.targetX, 0, world.w - player.w);
     player.targetY = clamp(player.targetY, b.yMin, b.yMax);
 
-    // smooth to target
     const dx = player.targetX - player.x;
     const dy = player.targetY - player.y;
 
@@ -414,40 +411,59 @@
     }
   }
 
-  // --- Pharmacy background ---
+  // -------------------- Pharmacy background (UPGRADED) --------------------
   function drawPharmacyBackground() {
-    // светлый “аптечный” зал
     ctx.fillStyle = "#0e1218";
     ctx.fillRect(0, 0, world.w, world.h);
 
     const wallH = world.h * 0.52;
     const floorY = wallH;
 
-    // стена (светлая, чистая)
+    // wall
     ctx.fillStyle = "#e8f2ee";
     ctx.fillRect(0, 0, world.w, wallH);
 
-    // верхняя тень
-    ctx.globalAlpha = 0.10;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, world.w, wallH * 0.10);
+    // lightbox sign "АПТЕКА"
+    const signW = Math.min(world.w * 0.56, 520);
+    const signH = Math.max(52, wallH * 0.12);
+    const signX = world.w * 0.50 - signW / 2;
+    const signY = wallH * 0.04;
+
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "#ffffff";
+    roundRectAbs(signX, signY, signW, signH, 18);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = "#1fbf6a";
+    roundRectAbs(signX - 8, signY - 8, signW + 16, signH + 16, 22);
+    ctx.fill();
     ctx.globalAlpha = 1;
 
-    // аптечный крест
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const fz = Math.max(22, Math.floor(signH * 0.55));
+    ctx.font = `900 ${fz}px system-ui`;
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "rgba(0,0,0,0.12)";
+    ctx.strokeText("АПТЕКА", signX + signW / 2, signY + signH / 2);
+    ctx.fillStyle = "#1fbf6a";
+    ctx.fillText("АПТЕКА", signX + signW / 2, signY + signH / 2);
+
+    // pharmacy cross left
     const crossX = world.w * 0.12;
-    const crossY = wallH * 0.18;
+    const crossY = wallH * 0.20;
     const crossS = Math.max(52, Math.min(96, world.w * 0.10));
 
     ctx.save();
     ctx.translate(crossX, crossY);
     ctx.globalAlpha = 0.95;
     ctx.fillStyle = "#1fbf6a";
-    roundRectAbs(-crossS * 0.18, -crossS * 0.45, crossS * 0.36, crossS * 0.90, 14);
+    roundRectAbsLocal(-crossS * 0.18, -crossS * 0.45, crossS * 0.36, crossS * 0.90, 14);
     ctx.fill();
-    roundRectAbs(-crossS * 0.45, -crossS * 0.18, crossS * 0.90, crossS * 0.36, 14);
+    roundRectAbsLocal(-crossS * 0.45, -crossS * 0.18, crossS * 0.90, crossS * 0.36, 14);
     ctx.fill();
 
-    // лёгкое свечение
     ctx.globalAlpha = 0.16;
     ctx.fillStyle = "#1fbf6a";
     ctx.beginPath();
@@ -456,29 +472,29 @@
     ctx.restore();
     ctx.globalAlpha = 1;
 
-    // витрина/полки с лекарствами
+    // shelves
     const shelfCount = Math.max(3, Math.floor(world.w / 220));
     const shelfW = world.w / shelfCount * 0.80;
     const shelfH = wallH * 0.34;
-    const shelfY = wallH * 0.12;
+    const shelfY = wallH * 0.18;
 
     for (let i = 0; i < shelfCount; i++) {
       const slotW = world.w / shelfCount;
       const sx = i * slotW + (slotW - shelfW) / 2;
 
-      // стеклянная рамка
+      // frame
       ctx.fillStyle = "#d6e7e0";
       roundRectAbs(sx, shelfY, shelfW, shelfH, 18);
       ctx.fill();
 
-      // стекло
-      ctx.globalAlpha = 0.55;
+      // glass
+      ctx.globalAlpha = 0.45;
       ctx.fillStyle = "#bfe3ff";
       roundRectAbs(sx + 6, shelfY + 6, shelfW - 12, shelfH - 12, 14);
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      // “коробки лекарств” внутри
+      // medicine boxes + price tags
       const rows = 2;
       const cols = 6;
       for (let r = 0; r < rows; r++) {
@@ -488,22 +504,69 @@
           const bw = (shelfW - 52) / cols * 0.78;
           const bh = (shelfH - 46) / rows * 0.72;
 
-          ctx.globalAlpha = 0.85;
+          ctx.globalAlpha = 0.90;
           ctx.fillStyle = (c + r) % 3 === 0 ? "#ff6b6b" : (c + r) % 3 === 1 ? "#2b7cff" : "#f6d36b";
           roundRectAbs(bx, by, bw, bh, 10);
           ctx.fill();
 
-          ctx.globalAlpha = 0.25;
+          // label highlight
+          ctx.globalAlpha = 0.20;
           ctx.fillStyle = "#fff";
           roundRectAbs(bx + 4, by + 4, bw * 0.55, bh * 0.35, 8);
           ctx.fill();
+          ctx.globalAlpha = 1;
 
+          // price tag (small white tag)
+          const tagW = bw * 0.60;
+          const tagH = Math.max(12, bh * 0.22);
+          const tx = bx + bw * 0.18;
+          const ty = by + bh - tagH - 4;
+
+          ctx.globalAlpha = 0.92;
+          ctx.fillStyle = "#ffffff";
+          roundRectAbs(tx, ty, tagW, tagH, 8);
+          ctx.fill();
+
+          ctx.globalAlpha = 0.85;
+          ctx.fillStyle = "#1a2330";
+          ctx.font = `800 ${Math.max(10, Math.floor(tagH * 0.60))}px system-ui`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          const price = 99 + ((i + r + c) * 17) % 399;
+          ctx.fillText(`${price}₽`, tx + tagW / 2, ty + tagH / 2);
           ctx.globalAlpha = 1;
         }
       }
     }
 
-    // стойка фармацевта (передний план)
+    // running ticker (simple)
+    const tickerH = Math.max(26, wallH * 0.06);
+    const tickerY = wallH - tickerH - 6;
+
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "#1fbf6a";
+    roundRectAbs(world.w * 0.08, tickerY, world.w * 0.84, tickerH, 14);
+    ctx.fill();
+
+    ctx.save();
+    ctx.beginPath();
+    roundRectAbs(world.w * 0.08, tickerY, world.w * 0.84, tickerH, 14);
+    ctx.clip();
+
+    const text = "Скидки • Витамины • Антисептики • Консультация • ";
+    ctx.font = `800 ${Math.floor(tickerH * 0.55)}px system-ui`;
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+
+    const speed = 120; // px/s
+    const offset = (world.t * speed) % (world.w * 0.84);
+    ctx.fillText(text + text + text, world.w * 0.08 + 12 - offset, tickerY + tickerH / 2);
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // desk
     const deskH = wallH * 0.18;
     ctx.fillStyle = "#cfe1da";
     ctx.fillRect(0, wallH - deskH, world.w, deskH);
@@ -513,7 +576,7 @@
     ctx.fillRect(0, wallH - deskH, world.w, 6);
     ctx.globalAlpha = 1;
 
-    // пол (плитка)
+    // floor tiles
     ctx.fillStyle = "#dfe7ee";
     ctx.fillRect(0, floorY, world.w, world.h - floorY);
 
@@ -537,11 +600,12 @@
       ctx.stroke();
     }
 
-    // лёгкая виньетка
-    ctx.globalAlpha = 0.10;
-    ctx.fillStyle = "#000";
+    // subtle vignette
+    const g = ctx.createRadialGradient(world.w / 2, world.h * 0.65, world.w * 0.1, world.w / 2, world.h * 0.65, world.w * 0.9);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(1, "rgba(0,0,0,0.18)");
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, world.w, world.h);
-    ctx.globalAlpha = 1;
   }
 
   function roundRectAbs(x, y, w, h, r) {
@@ -555,7 +619,18 @@
     ctx.closePath();
   }
 
-  // --- Player render (same) ---
+  function roundRectAbsLocal(x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  // --- Player render ---
   function drawPlayer() {
     const x = player.x, y = player.y, w = player.w, h = player.h;
     const flashing = player.invuln > 0 && Math.floor(world.t * 14) % 2 === 0;
@@ -655,7 +730,7 @@
     ctx.restore();
   }
 
-  // --- Procedural items + hazards (same as before, sharp text) ---
+  // -------------------- Procedural items + hazards --------------------
   function roundRectLocal(ctx2, x, y, w, h, r) {
     const rr = Math.min(r, w / 2, h / 2);
     ctx2.beginPath();
