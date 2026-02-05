@@ -411,7 +411,7 @@
     }
   }
 
-  // -------------------- Pharmacy background (with cashier + pharmacist + posters) --------------------
+  // -------------------- Pharmacy background (NO price tags) --------------------
   function drawPharmacyBackground() {
     ctx.fillStyle = "#0e1218";
     ctx.fillRect(0, 0, world.w, world.h);
@@ -423,7 +423,7 @@
     ctx.fillStyle = "#e8f2ee";
     ctx.fillRect(0, 0, world.w, wallH);
 
-    // sign "АПТЕКА"
+    // lightbox sign "АПТЕКА"
     const signW = Math.min(world.w * 0.56, 520);
     const signH = Math.max(52, wallH * 0.12);
     const signX = world.w * 0.50 - signW / 2;
@@ -450,12 +450,7 @@
     ctx.fillStyle = "#1fbf6a";
     ctx.fillText("АПТЕКА", signX + signW / 2, signY + signH / 2);
 
-    // posters (clear, readable)
-    drawPoster(world.w * 0.76, wallH * 0.10, 150, 86, "-15%", "#ff6b6b");
-    drawPoster(world.w * 0.70, wallH * 0.24, 190, 86, "Витамины", "#f6d36b");
-    drawPoster(world.w * 0.72, wallH * 0.38, 210, 86, "Антисептики", "#2b7cff");
-
-    // green cross left
+    // cross
     const crossX = world.w * 0.12;
     const crossY = wallH * 0.20;
     const crossS = Math.max(52, Math.min(96, world.w * 0.10));
@@ -477,7 +472,7 @@
     ctx.restore();
     ctx.globalAlpha = 1;
 
-    // shelves (boxes)
+    // shelves (boxes only, no tags)
     const shelfCount = Math.max(3, Math.floor(world.w / 220));
     const shelfW = world.w / shelfCount * 0.80;
     const shelfH = wallH * 0.34;
@@ -548,23 +543,15 @@
     ctx.restore();
     ctx.globalAlpha = 1;
 
-    // desk (counter)
+    // desk
     const deskH = wallH * 0.18;
-    const deskY = wallH - deskH;
-
     ctx.fillStyle = "#cfe1da";
-    ctx.fillRect(0, deskY, world.w, deskH);
+    ctx.fillRect(0, wallH - deskH, world.w, deskH);
 
     ctx.globalAlpha = 0.12;
     ctx.fillStyle = "#000";
-    ctx.fillRect(0, deskY, world.w, 6);
+    ctx.fillRect(0, wallH - deskH, world.w, 6);
     ctx.globalAlpha = 1;
-
-    // pharmacist silhouette behind desk (center-ish)
-    drawPharmacistSilhouette(world.w * 0.54, deskY - deskH * 0.05, deskH * 1.05);
-
-    // cash register + terminal on desk (right side)
-    drawCashAndTerminal(world.w * 0.78, deskY + deskH * 0.18, deskH * 0.70);
 
     // floor tiles
     ctx.fillStyle = "#dfe7ee";
@@ -598,158 +585,6 @@
     ctx.fillRect(0, 0, world.w, world.h);
   }
 
-  function drawPoster(x, y, w, h, text, accent) {
-    // clamp so it doesn't go off-screen on tiny phones
-    const W = Math.max(110, Math.min(w, world.w * 0.35));
-    const H = Math.max(64, Math.min(h, world.h * 0.12));
-    const X = clamp(x, 10, world.w - W - 10);
-    const Y = clamp(y, 10, (world.h * 0.52) - H - 10);
-
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = "#ffffff";
-    roundRectAbs(X, Y, W, H, 16);
-    ctx.fill();
-
-    ctx.globalAlpha = 0.20;
-    ctx.fillStyle = accent;
-    roundRectAbs(X - 6, Y - 6, W + 12, H + 12, 18);
-    ctx.fill();
-
-    // header bar
-    ctx.globalAlpha = 0.92;
-    ctx.fillStyle = accent;
-    roundRectAbs(X + 10, Y + 10, W - 20, H * 0.26, 12);
-    ctx.fill();
-
-    ctx.globalAlpha = 1;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `900 ${Math.max(16, Math.floor(H * 0.36))}px system-ui`;
-    ctx.fillStyle = "#1a2330";
-    ctx.fillText(text, X + W / 2, Y + H * 0.64);
-
-    // small "tape" corners
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = "#1a2330";
-    ctx.fillRect(X + 8, Y + 8, 14, 6);
-    ctx.fillRect(X + W - 22, Y + 8, 14, 6);
-    ctx.globalAlpha = 1;
-  }
-
-  function drawPharmacistSilhouette(centerX, headY, scale) {
-    // silhouette: head + shoulders + torso
-    const s = Math.max(60, Math.min(scale, 160));
-    const headR = s * 0.18;
-    const neckW = s * 0.20;
-    const neckH = s * 0.10;
-    const bodyW = s * 0.70;
-    const bodyH = s * 0.55;
-
-    const x = centerX;
-    const y = headY;
-
-    ctx.save();
-    ctx.globalAlpha = 0.26;
-    ctx.fillStyle = "#0b0f14";
-
-    // head
-    ctx.beginPath();
-    ctx.arc(x, y, headR, 0, Math.PI * 2);
-    ctx.fill();
-
-    // neck
-    roundRectAbs(x - neckW / 2, y + headR * 0.65, neckW, neckH, 10);
-    ctx.fill();
-
-    // shoulders/body
-    roundRectAbs(x - bodyW / 2, y + headR + neckH * 0.5, bodyW, bodyH, 28);
-    ctx.fill();
-
-    // little highlight (subtle)
-    ctx.globalAlpha = 0.10;
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(x - headR * 0.35, y - headR * 0.15, headR * 0.55, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  }
-
-  function drawCashAndTerminal(x, y, scale) {
-    const s = Math.max(52, Math.min(scale, 150));
-
-    // cash register base
-    const baseW = s * 0.85;
-    const baseH = s * 0.38;
-    const baseX = x - baseW / 2;
-    const baseY = y + s * 0.30;
-
-    ctx.save();
-    ctx.globalAlpha = 0.95;
-
-    // shadow
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = "#000";
-    roundRectAbs(baseX + 4, baseY + 6, baseW, baseH, 14);
-    ctx.fill();
-
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = "#1a2330";
-    roundRectAbs(baseX, baseY, baseW, baseH, 14);
-    ctx.fill();
-
-    // register top
-    const topW = s * 0.62;
-    const topH = s * 0.28;
-    const topX = x - topW * 0.62;
-    const topY = y + s * 0.10;
-
-    ctx.fillStyle = "#2a3445";
-    roundRectAbs(topX, topY, topW, topH, 14);
-    ctx.fill();
-
-    // display
-    ctx.globalAlpha = 0.75;
-    ctx.fillStyle = "#9cc9ff";
-    roundRectAbs(topX + topW * 0.16, topY + topH * 0.18, topW * 0.68, topH * 0.46, 10);
-    ctx.fill();
-    ctx.globalAlpha = 0.95;
-
-    // terminal stand
-    const termW = s * 0.28;
-    const termH = s * 0.32;
-    const termX = x + baseW * 0.18;
-    const termY = y + s * 0.06;
-
-    ctx.fillStyle = "#2a3445";
-    roundRectAbs(termX, termY, termW, termH, 12);
-    ctx.fill();
-
-    // terminal screen
-    ctx.globalAlpha = 0.70;
-    ctx.fillStyle = "#bfe3ff";
-    roundRectAbs(termX + termW * 0.14, termY + termH * 0.12, termW * 0.72, termH * 0.38, 10);
-    ctx.fill();
-    ctx.globalAlpha = 0.95;
-
-    // terminal keypad dots
-    ctx.globalAlpha = 0.55;
-    ctx.fillStyle = "#ffffff";
-    const dots = 3;
-    for (let r = 0; r < dots; r++) {
-      for (let c = 0; c < dots; c++) {
-        const dx = termX + termW * 0.22 + c * (termW * 0.22);
-        const dy = termY + termH * 0.62 + r * (termH * 0.10);
-        ctx.beginPath();
-        ctx.arc(dx, dy, Math.max(1.5, s * 0.012), 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    ctx.globalAlpha = 1;
-
-    ctx.restore();
-  }
-
   function roundRectAbs(x, y, w, h, r) {
     const rr = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
@@ -772,7 +607,107 @@
     ctx.closePath();
   }
 
-  // -------------------- Items + hazards drawing (unchanged from your current version) --------------------
+  // --- Player render ---
+  function drawPlayer() {
+    const x = player.x, y = player.y, w = player.w, h = player.h;
+    const flashing = player.invuln > 0 && Math.floor(world.t * 14) % 2 === 0;
+    const slowed = player.slowTimer > 0;
+
+    ctx.save();
+    ctx.globalAlpha = flashing ? 0.50 : 1;
+
+    const bodyX = x + w * 0.18;
+    const bodyY = y + h * 0.35;
+    const bodyW = w * 0.64;
+    const bodyH = h * 0.56;
+
+    ctx.globalAlpha *= 0.95;
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    roundRectAbs(bodyX + 3, bodyY + 6, bodyW, bodyH, 18);
+    ctx.fill();
+
+    ctx.globalAlpha = flashing ? 0.55 : 1;
+    ctx.fillStyle = "#ffffff";
+    roundRectAbs(bodyX, bodyY, bodyW, bodyH, 18);
+    ctx.fill();
+
+    ctx.fillStyle = "#d9dbe6";
+    roundRectAbs(bodyX + bodyW * 0.30, bodyY + bodyH * 0.05, bodyW * 0.40, bodyH * 0.12, 12);
+    ctx.fill();
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const shirtFont = Math.max(16, Math.floor(w * 0.26));
+    ctx.font = `900 ${shirtFont}px system-ui`;
+    ctx.lineWidth = Math.max(3, Math.floor(w * 0.06));
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
+    ctx.strokeText("РМ", x + w * 0.5, bodyY + bodyH * 0.52);
+    ctx.fillStyle = "#111823";
+    ctx.fillText("РМ", x + w * 0.5, bodyY + bodyH * 0.52);
+
+    const faceR = Math.floor(w * 0.28);
+    const fx = x + w * 0.5;
+    const fy = y + h * 0.22;
+
+    ctx.globalAlpha = flashing ? 0.55 : 1;
+    ctx.fillStyle = "#0b0f14";
+    ctx.beginPath();
+    ctx.arc(fx, fy, faceR + 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(fx, fy, faceR, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(IMG.face, fx - faceR, fy - faceR, faceR * 2, faceR * 2);
+    ctx.restore();
+
+    if (slowed && !flashing) {
+      const pulse = 0.35 + 0.25 * Math.sin(world.t * 12);
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = "rgba(160, 220, 255, 1)";
+      ctx.lineWidth = Math.max(3, Math.floor(w * 0.05));
+      ctx.beginPath();
+      ctx.arc(fx, fy, faceR + 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = flashing ? 0.55 : 1;
+    ctx.fillStyle = "#111823";
+    const legW = Math.floor(w * 0.16);
+    const legH = Math.floor(h * 0.16);
+    const step = Math.sin(world.t * 14) * 6 * (slowed ? 0.6 : 1);
+    ctx.fillRect(x + Math.floor(w * 0.30), y + h - legH, legW, legH + step);
+    ctx.fillRect(x + Math.floor(w * 0.58), y + h - legH, legW, legH - step);
+
+    ctx.restore();
+  }
+
+  function drawEntities() {
+    for (const e of entities) if (e.drawFn) e.drawFn(ctx, e, world.t);
+  }
+
+  function drawGameOverOverlay() {
+    ctx.save();
+    ctx.globalAlpha = 0.62;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, world.w, world.h);
+    ctx.globalAlpha = 1;
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#e9eef5";
+    ctx.font = "800 34px system-ui";
+    ctx.fillText("GAME OVER", world.w / 2, world.h * 0.45);
+
+    ctx.font = "600 16px system-ui";
+    ctx.globalAlpha = 0.90;
+    ctx.fillText(`Счёт: ${world.score}   •   Рекорд: ${world.highScore}`, world.w / 2, world.h * 0.45 + 34);
+    ctx.fillText("Нажми Enter или «Заново»", world.w / 2, world.h * 0.45 + 60);
+
+    ctx.restore();
+  }
+
+  // -------------------- Procedural items + hazards --------------------
   function roundRectLocal(ctx2, x, y, w, h, r) {
     const rr = Math.min(r, w / 2, h / 2);
     ctx2.beginPath();
@@ -784,7 +719,7 @@
     ctx2.closePath();
   }
 
-  // KFC bucket / wings / money: as before
+  // --- KFC bucket ---
   function drawBucket(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const wobble = Math.sin(t * 6 + x * 0.02) * (w * 0.02);
@@ -883,6 +818,7 @@
     }
   }
 
+  // --- Money ---
   function drawMoney(ctx2, e, t) {
     const x = e.x, y = e.y, w = e.w, h = e.h;
     const tilt = Math.sin(t * 7 + x * 0.03) * 0.06;
@@ -945,7 +881,7 @@
     ctx2.restore();
   }
 
-  // hazards: spikes/saw/bomb and GOLD bolt
+  // --- Hazards ---
   function drawHazard(ctx2, e, t) {
     const isTelegraphing = e.telegraph && e.age < TELEGRAPH_TIME;
     if (e.kind === "spikes") return drawSpikes(ctx2, e);
@@ -1068,12 +1004,14 @@
     ctx2.restore();
   }
 
+  // GOLD lightning (bolt)
   function drawBoltGold(ctx2, e, t, telegraphing) {
     const pulse = 0.70 + 0.30 * Math.sin(t * 10);
 
     ctx2.save();
     ctx2.translate(e.x, e.y);
 
+    // телеграф: золотое свечение (не голубое)
     if (telegraphing) {
       const glow = 0.30 + 0.35 * Math.sin(t * 20);
       ctx2.globalAlpha = glow;
@@ -1082,6 +1020,7 @@
       ctx2.globalAlpha = 1;
     }
 
+    // сама молния
     ctx2.globalAlpha = 0.95;
     ctx2.fillStyle = `rgba(246, 211, 107, ${pulse})`;
 
@@ -1095,11 +1034,13 @@
     ctx2.closePath();
     ctx2.fill();
 
+    // контур для читаемости
     ctx2.globalAlpha = 0.80;
     ctx2.strokeStyle = "rgba(0,0,0,0.35)";
     ctx2.lineWidth = Math.max(2, e.w * 0.05);
     ctx2.stroke();
 
+    // лёгкий блик
     ctx2.globalAlpha = 0.16;
     ctx2.fillStyle = "#fff";
     ctx2.fillRect(e.w * 0.18, e.h * 0.12, e.w * 0.64, e.h * 0.20);
