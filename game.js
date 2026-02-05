@@ -423,7 +423,7 @@
     const wallH = world.h * 0.52;
     const floorY = wallH;
 
-    // wall gradient (контраст под вывеску)
+    // wall gradient
     const wg = ctx.createLinearGradient(0, 0, 0, wallH);
     wg.addColorStop(0, "#dff2eb");
     wg.addColorStop(0.55, "#e8f7f2");
@@ -431,19 +431,19 @@
     ctx.fillStyle = wg;
     ctx.fillRect(0, 0, world.w, wallH);
 
-    // subtle dark band behind sign to make it pop
+    // subtle band to help sign pop
     ctx.globalAlpha = 0.10;
     ctx.fillStyle = "#0b0f14";
     ctx.fillRect(0, wallH * 0.02, world.w, wallH * 0.18);
     ctx.globalAlpha = 1;
 
-    // sign "АПТЕКА" (сильнее выделяем)
+    // sign "АПТЕКА"
     const signW = Math.min(world.w * 0.62, 560);
     const signH = Math.max(58, wallH * 0.13);
     const signX = world.w * 0.50 - signW / 2;
     const signY = wallH * 0.035;
 
-    // outer glow
+    // glow
     ctx.globalAlpha = 0.22;
     ctx.fillStyle = "#1fbf6a";
     roundRectAbs(signX - 18, signY - 14, signW + 36, signH + 28, 26);
@@ -481,74 +481,20 @@
     ctx.fillStyle = "#ffffff";
     ctx.fillText("АПТЕКА", signX + signW / 2, signY + signH / 2);
 
-    // pharmacy cross left (оставляем как атмосферу)
+    // left small cross (атмосфера)
     const crossX = world.w * 0.12;
     const crossY = wallH * 0.22;
-    const crossS = Math.max(52, Math.min(96, world.w * 0.10));
+    const crossS = Math.max(52, Math.min(92, world.w * 0.10));
+    drawNeonCross(crossX, crossY, crossS, 0.65);
 
-    ctx.save();
-    ctx.translate(crossX, crossY);
-    ctx.globalAlpha = 0.92;
-    ctx.fillStyle = "#1fbf6a";
-    roundRectAbsLocal(-crossS * 0.18, -crossS * 0.45, crossS * 0.36, crossS * 0.90, 14);
-    ctx.fill();
-    roundRectAbsLocal(-crossS * 0.45, -crossS * 0.18, crossS * 0.90, crossS * 0.36, 14);
-    ctx.fill();
+    // big neon cross вместо полок
+    const bigS = Math.max(140, Math.min(240, world.w * 0.28));
+    const bigX = world.w * 0.78;
+    const bigY = wallH * 0.30;
+    drawNeonCross(bigX, bigY, bigS, 1.0);
 
-    ctx.globalAlpha = 0.16;
-    ctx.fillStyle = "#1fbf6a";
-    ctx.beginPath();
-    ctx.arc(0, 0, crossS * 0.75, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ctx.globalAlpha = 1;
-
-    // posters: оставляем ТОЛЬКО -15% (по просьбе)
+    // poster: только -15%
     drawPoster(world.w * 0.76, wallH * 0.12, 150, 86, "-15%", "#ff6b6b");
-
-    // shelves (medicine boxes)
-    const shelfCount = Math.max(3, Math.floor(world.w / 220));
-    const shelfW = world.w / shelfCount * 0.80;
-    const shelfH = wallH * 0.34;
-    const shelfY = wallH * 0.20;
-
-    for (let i = 0; i < shelfCount; i++) {
-      const slotW = world.w / shelfCount;
-      const sx = i * slotW + (slotW - shelfW) / 2;
-
-      ctx.fillStyle = "#d6e7e0";
-      roundRectAbs(sx, shelfY, shelfW, shelfH, 18);
-      ctx.fill();
-
-      ctx.globalAlpha = 0.40;
-      ctx.fillStyle = "#bfe3ff";
-      roundRectAbs(sx + 6, shelfY + 6, shelfW - 12, shelfH - 12, 14);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-
-      const rows = 2;
-      const cols = 6;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const bx = sx + 18 + c * ((shelfW - 36) / cols);
-          const by = shelfY + 16 + r * ((shelfH - 32) / rows);
-          const bw = (shelfW - 52) / cols * 0.78;
-          const bh = (shelfH - 46) / rows * 0.72;
-
-          ctx.globalAlpha = 0.90;
-          ctx.fillStyle = (c + r) % 3 === 0 ? "#ff6b6b" : (c + r) % 3 === 1 ? "#2b7cff" : "#f6d36b";
-          roundRectAbs(bx, by, bw, bh, 10);
-          ctx.fill();
-
-          ctx.globalAlpha = 0.18;
-          ctx.fillStyle = "#fff";
-          roundRectAbs(bx + 4, by + 4, bw * 0.55, bh * 0.35, 8);
-          ctx.fill();
-
-          ctx.globalAlpha = 1;
-        }
-      }
-    }
 
     // counter
     const deskH = wallH * 0.18;
@@ -562,11 +508,10 @@
     ctx.fillRect(0, deskY, world.w, 6);
     ctx.globalAlpha = 1;
 
-    // pharmacist silhouette + cashier
     drawPharmacistSilhouette(world.w * 0.54, deskY - deskH * 0.05, deskH * 1.05);
     drawCashAndTerminal(world.w * 0.78, deskY + deskH * 0.18, deskH * 0.70);
 
-    // ticker (after desk, visible) — консультацию заменили на иммуномодуляторы
+    // ticker
     const tickerH = Math.max(30, wallH * 0.07);
     const tickerY = Math.max(10, deskY - tickerH - 10);
 
@@ -580,7 +525,7 @@
     roundRectAbs(world.w * 0.08, tickerY, world.w * 0.84, tickerH, 14);
     ctx.clip();
 
-    const text = "Скидки • Витамины • Антисептики • Иммуномодуляторы • ";
+    const text = "Скидки • Иммуномодуляторы • ";
     ctx.font = `900 ${Math.floor(tickerH * 0.58)}px system-ui`;
     ctx.fillStyle = "rgba(255,255,255,0.98)";
     ctx.textAlign = "left";
@@ -590,8 +535,7 @@
     const trackW = world.w * 0.84;
     const offset = (world.t * speed) % trackW;
 
-    ctx.fillText(text + text + text, world.w * 0.08 + 14 - offset, tickerY + tickerH / 2);
-
+    ctx.fillText(text + text + text + text, world.w * 0.08 + 14 - offset, tickerY + tickerH / 2);
     ctx.restore();
     ctx.globalAlpha = 1;
 
@@ -630,6 +574,65 @@
     ctx.fillRect(0, 0, world.w, world.h);
   }
 
+  // НЕОНОВЫЙ КРЕСТ (пульсация + glow)
+  function drawNeonCross(cx, cy, size, intensity) {
+    const s = size;
+    const arm = s * 0.22;
+    const thick = s * 0.16;
+    const pulse = 0.75 + 0.25 * Math.sin(world.t * 3.4 + cx * 0.01);
+    const glowA = 0.18 + 0.16 * pulse * intensity;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // big glow halo
+    ctx.globalAlpha = glowA;
+    ctx.fillStyle = "#1fbf6a";
+    ctx.beginPath();
+    ctx.arc(0, 0, s * 0.72, 0, Math.PI * 2);
+    ctx.fill();
+
+    // outer glow cross
+    ctx.globalAlpha = 0.22 * pulse * intensity;
+    ctx.fillStyle = "#1fbf6a";
+    roundRectAbsLocal(-thick / 2, -arm - thick / 2, thick, arm * 2 + thick, thick * 0.60);
+    ctx.fill();
+    roundRectAbsLocal(-arm - thick / 2, -thick / 2, arm * 2 + thick, thick, thick * 0.60);
+    ctx.fill();
+
+    // main neon body
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = "#19b35f";
+    roundRectAbsLocal(-thick / 2, -arm - thick / 2, thick, arm * 2 + thick, thick * 0.60);
+    ctx.fill();
+    roundRectAbsLocal(-arm - thick / 2, -thick / 2, arm * 2 + thick, thick, thick * 0.60);
+    ctx.fill();
+
+    // inner bright core
+    ctx.globalAlpha = 0.55 + 0.25 * pulse;
+    ctx.fillStyle = "#d8fff0";
+    roundRectAbsLocal(-thick * 0.28, -arm - thick * 0.28, thick * 0.56, arm * 2 + thick * 0.56, thick * 0.45);
+    ctx.fill();
+    roundRectAbsLocal(-arm - thick * 0.28, -thick * 0.28, arm * 2 + thick * 0.56, thick * 0.56, thick * 0.45);
+    ctx.fill();
+
+    // small sparkle dots
+    ctx.globalAlpha = 0.25 * pulse;
+    ctx.fillStyle = "#ffffff";
+    for (let i = 0; i < 5; i++) {
+      const a = (world.t * 1.2 + i * 1.4) % (Math.PI * 2);
+      const rr = s * (0.40 + 0.10 * Math.sin(world.t * 2 + i));
+      const x = Math.cos(a) * rr;
+      const y = Math.sin(a) * rr;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1.8, s * 0.02), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
   function drawPoster(x, y, w, h, text, accent) {
     const W = Math.max(120, Math.min(w, world.w * 0.36));
     const H = Math.max(66, Math.min(h, world.h * 0.115));
@@ -651,7 +654,6 @@
     roundRectAbs(X + 10, Y + 10, W - 20, H * 0.26, 12);
     ctx.fill();
 
-    // auto-fit text (короткое -15% всегда влезет)
     ctx.globalAlpha = 1;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
