@@ -481,20 +481,17 @@
     ctx.fillStyle = "#ffffff";
     ctx.fillText("АПТЕКА", signX + signW / 2, signY + signH / 2);
 
-    // left small cross (атмосфера)
+    // small left cross (простая неонка)
     const crossX = world.w * 0.12;
     const crossY = wallH * 0.22;
     const crossS = Math.max(52, Math.min(92, world.w * 0.10));
-    drawNeonCross(crossX, crossY, crossS, 0.65);
+    drawNeonCrossSimple(crossX, crossY, crossS, 0.65);
 
-    // big neon cross вместо полок
-    const bigS = Math.max(140, Math.min(240, world.w * 0.28));
+    // big LED cross (ВАУ аптечно)
+    const bigS = Math.max(150, Math.min(260, world.w * 0.30));
     const bigX = world.w * 0.78;
     const bigY = wallH * 0.30;
-    drawNeonCross(bigX, bigY, bigS, 1.0);
-
-    // poster: только -15%
-    drawPoster(world.w * 0.76, wallH * 0.12, 150, 86, "-15%", "#ff6b6b");
+    drawLedCross(bigX, bigY, bigS, 1.0);
 
     // counter
     const deskH = wallH * 0.18;
@@ -574,25 +571,23 @@
     ctx.fillRect(0, 0, world.w, world.h);
   }
 
-  // НЕОНОВЫЙ КРЕСТ (пульсация + glow)
-  function drawNeonCross(cx, cy, size, intensity) {
+  // Простая неонка для маленького креста
+  function drawNeonCrossSimple(cx, cy, size, intensity) {
     const s = size;
     const arm = s * 0.22;
     const thick = s * 0.16;
     const pulse = 0.75 + 0.25 * Math.sin(world.t * 3.4 + cx * 0.01);
-    const glowA = 0.18 + 0.16 * pulse * intensity;
+    const glowA = 0.16 + 0.14 * pulse * intensity;
 
     ctx.save();
     ctx.translate(cx, cy);
 
-    // big glow halo
     ctx.globalAlpha = glowA;
     ctx.fillStyle = "#1fbf6a";
     ctx.beginPath();
     ctx.arc(0, 0, s * 0.72, 0, Math.PI * 2);
     ctx.fill();
 
-    // outer glow cross
     ctx.globalAlpha = 0.22 * pulse * intensity;
     ctx.fillStyle = "#1fbf6a";
     roundRectAbsLocal(-thick / 2, -arm - thick / 2, thick, arm * 2 + thick, thick * 0.60);
@@ -600,80 +595,129 @@
     roundRectAbsLocal(-arm - thick / 2, -thick / 2, arm * 2 + thick, thick, thick * 0.60);
     ctx.fill();
 
-    // main neon body
-    ctx.globalAlpha = 0.92;
+    ctx.globalAlpha = 0.90;
     ctx.fillStyle = "#19b35f";
     roundRectAbsLocal(-thick / 2, -arm - thick / 2, thick, arm * 2 + thick, thick * 0.60);
     ctx.fill();
     roundRectAbsLocal(-arm - thick / 2, -thick / 2, arm * 2 + thick, thick, thick * 0.60);
     ctx.fill();
 
-    // inner bright core
-    ctx.globalAlpha = 0.55 + 0.25 * pulse;
+    ctx.globalAlpha = 0.50 + 0.25 * pulse;
     ctx.fillStyle = "#d8fff0";
     roundRectAbsLocal(-thick * 0.28, -arm - thick * 0.28, thick * 0.56, arm * 2 + thick * 0.56, thick * 0.45);
     ctx.fill();
     roundRectAbsLocal(-arm - thick * 0.28, -thick * 0.28, arm * 2 + thick * 0.56, thick * 0.56, thick * 0.45);
     ctx.fill();
 
-    // small sparkle dots
-    ctx.globalAlpha = 0.25 * pulse;
-    ctx.fillStyle = "#ffffff";
-    for (let i = 0; i < 5; i++) {
-      const a = (world.t * 1.2 + i * 1.4) % (Math.PI * 2);
-      const rr = s * (0.40 + 0.10 * Math.sin(world.t * 2 + i));
-      const x = Math.cos(a) * rr;
-      const y = Math.sin(a) * rr;
-      ctx.beginPath();
-      ctx.arc(x, y, Math.max(1.8, s * 0.02), 0, Math.PI * 2);
-      ctx.fill();
-    }
-
     ctx.restore();
     ctx.globalAlpha = 1;
   }
 
-  function drawPoster(x, y, w, h, text, accent) {
-    const W = Math.max(120, Math.min(w, world.w * 0.36));
-    const H = Math.max(66, Math.min(h, world.h * 0.115));
-    const X = clamp(x, 10, world.w - W - 10);
-    const Y = clamp(y, 10, (world.h * 0.52) - H - 10);
+  // LED-крест: пиксели + сканирующая полоса
+  function drawLedCross(cx, cy, size, intensity) {
+    const s = size;
+    const arm = s * 0.24;
+    const thick = s * 0.18;
 
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = "#ffffff";
-    roundRectAbs(X, Y, W, H, 16);
-    ctx.fill();
+    const pulse = 0.70 + 0.30 * Math.sin(world.t * 2.2 + cx * 0.01);
+    const glow = 0.16 + 0.22 * pulse * intensity;
 
-    ctx.globalAlpha = 0.18;
-    ctx.fillStyle = accent;
-    roundRectAbs(X - 6, Y - 6, W + 12, H + 12, 18);
-    ctx.fill();
+    const grid = Math.max(8, Math.floor(s / 14)); // плотность пикселей
+    const dot = Math.max(2.2, s / (grid * 4.2));
+    const gap = dot * 0.65;
 
-    ctx.globalAlpha = 0.92;
-    ctx.fillStyle = accent;
-    roundRectAbs(X + 10, Y + 10, W - 20, H * 0.26, 12);
-    ctx.fill();
+    // области креста в локальных координатах
+    const vRect = { x: -thick / 2, y: -arm - thick / 2, w: thick, h: arm * 2 + thick };
+    const hRect = { x: -arm - thick / 2, y: -thick / 2, w: arm * 2 + thick, h: thick };
 
-    ctx.globalAlpha = 1;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#1a2330";
-
-    const maxTextW = W - 22;
-    let fontSize = Math.max(14, Math.floor(H * 0.32));
-    ctx.font = `900 ${fontSize}px system-ui`;
-
-    while (ctx.measureText(text).width > maxTextW && fontSize > 12) {
-      fontSize -= 1;
-      ctx.font = `900 ${fontSize}px system-ui`;
+    // helper: точка внутри креста
+    function insideCross(x, y) {
+      const inV = x >= vRect.x && x <= vRect.x + vRect.w && y >= vRect.y && y <= vRect.y + vRect.h;
+      const inH = x >= hRect.x && x <= hRect.x + hRect.w && y >= hRect.y && y <= hRect.y + hRect.h;
+      return inV || inH;
     }
 
-    ctx.fillText(text, X + W / 2, Y + H * 0.64);
+    // helper: расстояние до центра (для мягкого градиента яркости)
+    function normDist(x, y) {
+      const d = Math.sqrt(x * x + y * y);
+      return clamp(d / (s * 0.75), 0, 1);
+    }
 
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = "#1a2330";
-    ctx.fillRect(X + 8, Y + 8, 14, 6);
-    ctx.fillRect(X + W - 22, Y + 8, 14, 6);
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // общий неоновый ореол
+    ctx.globalAlpha = glow * 0.75;
+    ctx.fillStyle = "#1fbf6a";
+    ctx.beginPath();
+    ctx.arc(0, 0, s * 0.82, 0, Math.PI * 2);
+    ctx.fill();
+
+    // подложка панели (темнее, чтобы пиксели читались)
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "rgba(10, 22, 16, 0.95)";
+    roundRectAbsLocal(vRect.x - 10, vRect.y - 10, vRect.w + 20, vRect.h + 20, 22);
+    ctx.fill();
+    roundRectAbsLocal(hRect.x - 10, hRect.y - 10, hRect.w + 20, hRect.h + 20, 22);
+    ctx.fill();
+
+    // клип по форме креста, чтобы пиксели не лезли наружу
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    roundRectAbsLocal(vRect.x, vRect.y, vRect.w, vRect.h, thick * 0.55);
+    roundRectAbsLocal(hRect.x, hRect.y, hRect.w, hRect.h, thick * 0.55);
+    ctx.clip("evenodd");
+
+    // сканирующая полоса (движется сверху вниз)
+    const scanH = s * 0.16;
+    const scanY = ((world.t * 0.55) % 1) * (s * 1.20) - (s * 0.60);
+    const scanTop = scanY - scanH / 2;
+    const scanBot = scanY + scanH / 2;
+
+    // рисуем пиксели
+    const span = s * 0.85;
+    const min = -span;
+    const max = span;
+    const step = dot + gap;
+
+    for (let y = min; y <= max; y += step) {
+      for (let x = min; x <= max; x += step) {
+        if (!insideCross(x, y)) continue;
+
+        const d = normDist(x, y);
+        let a = (0.55 + 0.35 * pulse) * (1 - d * 0.75);
+
+        // усиление яркости внутри скан-полосы
+        if (y >= scanTop && y <= scanBot) a *= 1.65;
+
+        // небольшое мерцание “LED”
+        a *= 0.85 + 0.15 * Math.sin(world.t * 12 + (x + y) * 0.08);
+
+        // цвет пикселя: зелёный LED + белая сердцевина
+        ctx.globalAlpha = clamp(a, 0, 1) * 0.95;
+        ctx.fillStyle = "#19b35f";
+        ctx.beginPath();
+        ctx.arc(x, y, dot, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = clamp(a, 0, 1) * 0.45;
+        ctx.fillStyle = "#d8fff0";
+        ctx.beginPath();
+        ctx.arc(x - dot * 0.18, y - dot * 0.18, dot * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // контур креста
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = Math.max(3, s * 0.018);
+    roundRectAbsLocal(vRect.x, vRect.y, vRect.w, vRect.h, thick * 0.55);
+    ctx.stroke();
+    roundRectAbsLocal(hRect.x, hRect.y, hRect.w, hRect.h, thick * 0.55);
+    ctx.stroke();
+
+    ctx.restore();
     ctx.globalAlpha = 1;
   }
 
